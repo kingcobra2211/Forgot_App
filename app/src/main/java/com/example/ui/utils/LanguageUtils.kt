@@ -4,7 +4,7 @@ object LanguageUtils {
     private val englishMap = mapOf(
         "app_title" to "Forgot",
         "tagline" to "Save it once. Forget nothing.",
-        "search_hint" to "Search passport, Rahul, parking, medicine...",
+        "search_hint" to "Search passport, Frnd, parking, medicine...",
         "greeting_morning" to "Good Morning! ☀️",
         "greeting_afternoon" to "Good Afternoon! 🌤️",
         "greeting_evening" to "Good Evening! 🌙",

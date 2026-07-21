@@ -5,9 +5,23 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import com.example.data.dao.MemoryDao
-import com.example.data.model.Memory
+import com.example.data.model.*
 
-@Database(entities = [Memory::class], version = 1, exportSchema = false)
+@Database(
+    entities = [
+        Memory::class,
+        ParkingDetail::class,
+        MoneyDetail::class,
+        DocumentDetail::class,
+        MedicineDetail::class,
+        ShoppingDetail::class,
+        PlaceDetail::class,
+        GiftDetail::class,
+        WishlistDetail::class
+    ],
+    version = 1,
+    exportSchema = false
+)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun memoryDao(): MemoryDao
 

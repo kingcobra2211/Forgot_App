@@ -1,12 +1,15 @@
 package com.example.ui.search
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -20,7 +23,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.example.data.model.Memory
+import androidx.compose.ui.unit.sp
+import com.example.data.model.MemoryWithDetails
 import com.example.ui.components.MemoryCard
 import com.example.ui.utils.CategoryRegistry
 import com.example.ui.utils.LanguageUtils
@@ -43,71 +47,88 @@ fun SearchScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(MaterialTheme.colorScheme.background)
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
                     text = LanguageUtils.getString("search_tab", language),
                     style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Black
+                    fontWeight = FontWeight.Black,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
 
-                // Search Input TextField
+                // High-End Search Input Bar (Filled with rounded corner M3 style)
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { viewModel.searchQuery.value = it },
-                    placeholder = { Text(LanguageUtils.getString("search_hint", language)) },
+                    placeholder = { 
+                        Text(
+                            text = LanguageUtils.getString("search_hint", language),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        ) 
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("search_query_input"),
                     leadingIcon = {
-                        Icon(imageVector = Icons.Default.Search, contentDescription = "Search")
+                        Icon(
+                            imageVector = Icons.Default.Search, 
+                            contentDescription = "Search",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
                     },
                     trailingIcon = {
                         if (searchQuery.isNotEmpty()) {
                             IconButton(onClick = { viewModel.searchQuery.value = "" }) {
-                                Icon(imageVector = Icons.Default.Clear, contentDescription = "Clear search")
+                                Icon(
+                                    imageVector = Icons.Default.Clear, 
+                                    contentDescription = "Clear search",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
                         }
                     },
                     singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(16.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        focusedLabelColor = MaterialTheme.colorScheme.primary
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.24f),
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f),
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)
                     )
                 )
 
-                // Horizontal category filter pills
+                // Horizontal Category Filter Pills with smooth styling
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(vertical = 4.dp)
                 ) {
                     items(CategoryRegistry.categories) { catItem ->
                         val isSelected = selectedCategory?.lowercase() == catItem.name.lowercase()
-                        val bg = if (isSelected) catItem.color else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                        val bg = if (isSelected) catItem.color else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
                         val tc = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-
+                        
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
+                                .clip(RoundedCornerShape(10.dp))
                                 .background(bg)
                                 .clickable {
                                     viewModel.selectedCategory.value = if (isSelected) null else catItem.name
                                 }
-                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                                .padding(horizontal = 14.dp, vertical = 8.dp)
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(
                                     imageVector = catItem.icon,
                                     contentDescription = catItem.name,
                                     tint = tc,
-                                    modifier = Modifier.size(14.dp)
+                                    modifier = Modifier.size(16.dp)
                                 )
-                                Spacer(modifier = Modifier.width(4.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     text = LanguageUtils.getString(catItem.name, language),
-                                    style = MaterialTheme.typography.bodySmall,
+                                    style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = tc
                                 )
@@ -123,28 +144,29 @@ fun SearchScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
                 .testTag("search_results_lazy_column"),
-            contentPadding = PaddingValues(16.dp)
+            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp)
         ) {
-            // Results Count Header
+            // Results Info Row
             item {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 12.dp),
+                        .padding(bottom = 12.dp, top = 4.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         text = "Results (${searchResults.size})",
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Black,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                     )
+                    
                     if (searchQuery.isNotEmpty() || selectedCategory != null) {
                         Text(
-                            text = "Reset Search",
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.Bold,
+                            text = "Reset Filters",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Black,
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.clickable {
                                 viewModel.searchQuery.value = ""
@@ -155,49 +177,67 @@ fun SearchScreen(
                 }
             }
 
+            // Beautiful Empty State visual
             if (searchResults.isEmpty()) {
                 item {
-                    Column(
+                    Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 48.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
+                            .padding(vertical = 24.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)
+                        ),
+                        shape = RoundedCornerShape(18.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.SearchOff,
-                            contentDescription = "No results",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                            modifier = Modifier.size(54.dp)
-                        )
-                        Spacer(modifier = Modifier.height(14.dp))
-                        Text(
-                            text = LanguageUtils.getString("no_memories_found", language),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center
-                        )
-                        Text(
-                            text = "Try searching for Passport, RC, Rahul, Medicine, or filter by category.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(start = 24.dp, top = 4.dp, end = 24.dp, bottom = 4.dp)
-                        )
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(32.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.SearchOff,
+                                contentDescription = "No search results",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+                                modifier = Modifier.size(54.dp)
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = "No memories found",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Try searching for Passport, RC, Name, Medicine, or filter by a category above.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                                textAlign = TextAlign.Center
+                            )
+                        }
                     }
                 }
             } else {
-                items(searchResults) { memory ->
+                items(searchResults) { memoryWithDetails ->
+                    val memory = memoryWithDetails.memory
                     MemoryCard(
-                        memory = memory,
+                        memoryWithDetails = memoryWithDetails,
                         language = language,
                         onEdit = { onNavigateToRemember(memory.id, null) },
                         onPinToggle = { pinned -> viewModel.pinMemory(memory, pinned) },
                         onFavoriteToggle = { fav -> viewModel.favoriteMemory(memory, fav) },
                         onArchiveToggle = { viewModel.archiveMemory(memory) },
                         onDelete = { viewModel.moveMemoryToTrash(memory) },
-                        onUpdateChecklist = { newJson -> viewModel.updateMemory(memory.copy(checklistJson = newJson)) },
-                        onUpdatePaidStatus = { paid -> viewModel.updateMemory(memory.copy(isPaid = paid)) }
+                        onUpdateChecklist = { newItems ->
+                            val updatedDetail = memoryWithDetails.shoppingDetail?.copy(shoppingItems = newItems)
+                            viewModel.saveMemory(memory, updatedDetail)
+                        },
+                        onUpdatePaidStatus = { paid ->
+                            val updatedDetail = memoryWithDetails.moneyDetail?.copy(status = if (paid) "Returned" else "Pending")
+                            viewModel.saveMemory(memory, updatedDetail)
+                        }
                     )
                 }
             }

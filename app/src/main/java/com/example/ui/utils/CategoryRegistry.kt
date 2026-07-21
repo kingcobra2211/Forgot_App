@@ -24,7 +24,7 @@ object CategoryRegistry {
             name = "Money",
             icon = Icons.Default.MonetizationOn,
             color = Color(0xFFFFA726), // Orange
-            descriptionKey = "Rahul ki ₹500 ivvali"
+            descriptionKey = "Frnd ki ₹500 ivvali"
         ),
         CategoryItem(
             name = "Parking",

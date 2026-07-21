@@ -21,7 +21,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.example.data.model.Memory
+import androidx.compose.ui.unit.sp
+import com.example.data.model.MemoryWithDetails
 import com.example.ui.utils.CategoryRegistry
 import com.example.ui.utils.LanguageUtils
 import org.json.JSONArray
@@ -31,7 +32,7 @@ import java.util.*
 
 @Composable
 fun MemoryCard(
-    memory: Memory,
+    memoryWithDetails: MemoryWithDetails,
     language: String,
     onEdit: () -> Unit,
     onPinToggle: (Boolean) -> Unit,
@@ -41,19 +42,25 @@ fun MemoryCard(
     onUpdateChecklist: (String) -> Unit = {},
     onUpdatePaidStatus: (Boolean) -> Unit = {}
 ) {
+    val memory = memoryWithDetails.memory
     val categoryItem = CategoryRegistry.getCategoryItem(memory.category)
-    val cardColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
     val accentColor = categoryItem.color
     
     // Parse checklist
-    val checklistItems = remember(memory.checklistJson) {
+    val checklistItems = remember(memoryWithDetails.shoppingDetail?.shoppingItems) {
         val list = mutableListOf<Pair<String, Boolean>>()
         try {
-            if (!memory.checklistJson.isNullOrEmpty()) {
-                val arr = JSONArray(memory.checklistJson)
-                for (i in 0 until arr.length()) {
-                    val obj = arr.getJSONObject(i)
-                    list.add(Pair(obj.getString("text"), obj.getBoolean("checked")))
+            val shoppingItems = memoryWithDetails.shoppingDetail?.shoppingItems
+            if (!shoppingItems.isNullOrEmpty()) {
+                shoppingItems.split("\n").forEach { line ->
+                    val parts = line.split("|")
+                    if (parts.isNotEmpty()) {
+                        val text = parts[0]
+                        val checked = parts.getOrNull(1)?.toBoolean() ?: false
+                        if (text.isNotEmpty()) {
+                            list.add(Pair(text, checked))
+                        }
+                    }
                 }
             }
         } catch (e: Exception) {
@@ -62,46 +69,54 @@ fun MemoryCard(
         list
     }
 
+    // Modern Material 3 Outlined Card with subtle tonal tint
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 6.dp)
+            .padding(vertical = 4.dp)
             .testTag("memory_card_${memory.id}"),
-        colors = CardDefaults.cardColors(containerColor = cardColor),
-        shape = RoundedCornerShape(16.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)
+        ),
+        shape = RoundedCornerShape(18.dp),
+        border = CardDefaults.outlinedCardBorder().copy(
+            brush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.outline.copy(alpha = 0.12f))
+        )
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp)
+                .padding(16.dp)
         ) {
-            // Header: Category Icon + Title + Actions (Pin, Favorite, Menu)
+            // Header Row: Category Badge + Title and Labels + Quick Status Indicators
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Category Icon Badge
+                // Large stylish Category Icon badge
                 Box(
                     modifier = Modifier
-                        .size(38.dp)
+                        .size(44.dp)
                         .clip(CircleShape)
-                        .background(accentColor.copy(alpha = 0.15f)),
+                        .background(accentColor.copy(alpha = 0.12f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = categoryItem.icon,
                         contentDescription = memory.category,
                         tint = accentColor,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(22.dp)
                     )
                 }
 
-                Spacer(modifier = Modifier.width(10.dp))
+                Spacer(modifier = Modifier.width(12.dp))
 
-                // Title & Category Name
+                // Title and Category Label
                 Column(modifier = Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
                         Text(
                             text = memory.title,
                             style = MaterialTheme.typography.titleMedium,
@@ -109,55 +124,81 @@ fun MemoryCard(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             textDecoration = if (memory.status == "Completed") TextDecoration.LineThrough else TextDecoration.None,
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = if (memory.status == "Completed") MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurface
                         )
-                        if (memory.isPinned) {
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Icon(
-                                imageVector = Icons.Default.PushPin,
-                                contentDescription = "Pinned",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(14.dp)
-                            )
+                    }
+                    
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = LanguageUtils.getString(memory.category, language).uppercase(),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Black,
+                            color = accentColor,
+                            letterSpacing = 0.5.sp
+                        )
+                        
+                        // Priority Badge
+                        if (memory.priority != "Medium" || true) {
+                            val priorityColor = when (memory.priority) {
+                                "High" -> Color(0xFFEF5350)
+                                "Low" -> Color(0xFF66BB6A)
+                                else -> Color(0xFFFFA726)
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(priorityColor.copy(alpha = 0.12f))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = LanguageUtils.getString("priority_${memory.priority.lowercase()}", language).uppercase(),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = priorityColor,
+                                    fontSize = 9.sp
+                                )
+                            }
                         }
                     }
-                    Text(
-                        text = LanguageUtils.getString(memory.category, language),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = accentColor,
-                        fontWeight = FontWeight.SemiBold
-                    )
                 }
 
-                // Header Actions
-                IconButton(
-                    onClick = { onPinToggle(!memory.isPinned) },
-                    modifier = Modifier.size(36.dp)
+                // Interactive Pin & Favorite actions directly accessible with 48dp target standard spacing
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
-                    Icon(
-                        imageVector = if (memory.isPinned) Icons.Default.PushPin else Icons.Outlined.PushPin,
-                        contentDescription = "Pin",
-                        tint = if (memory.isPinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
+                    IconButton(
+                        onClick = { onPinToggle(!memory.isPinned) },
+                        modifier = Modifier.size(38.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (memory.isPinned) Icons.Default.PushPin else Icons.Outlined.PushPin,
+                            contentDescription = "Pin memory",
+                            tint = if (memory.isPinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
 
-                IconButton(
-                    onClick = { onFavoriteToggle(!memory.isFavorite) },
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(
-                        imageVector = if (memory.isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
-                        contentDescription = "Favorite",
-                        tint = if (memory.isFavorite) Color(0xFFFFD54F) else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp)
-                    )
+                    IconButton(
+                        onClick = { onFavoriteToggle(!memory.isFavorite) },
+                        modifier = Modifier.size(38.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (memory.isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
+                            contentDescription = "Favorite memory",
+                            tint = if (memory.isFavorite) Color(0xFFFFB300) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
             }
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Body Description
+            // Body Description Subtitle with clean typography
             if (memory.description.isNotEmpty()) {
                 Text(
                     text = memory.description,
@@ -165,57 +206,56 @@ fun MemoryCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(bottom = 8.dp)
+                    modifier = Modifier.padding(start = 2.dp, bottom = 8.dp)
                 )
             }
 
-            // Category Specific UI elements
+            // Category Specific Beautiful UI Subsections
             when (memory.category.lowercase()) {
                 "money" -> {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(vertical = 4.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.5f))
-                            .padding(8.dp),
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))
+                            .padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Column {
-                            if (!memory.person.isNullOrEmpty()) {
+                            if (!memoryWithDetails.person.isNullOrEmpty()) {
                                 Text(
-                                    text = "${LanguageUtils.getString("money_person", language)}: ${memory.person}",
+                                    text = "${LanguageUtils.getString("money_person", language)}: ${memoryWithDetails.person}",
                                     style = MaterialTheme.typography.bodySmall,
-                                    fontWeight = FontWeight.SemiBold
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                             Text(
-                                text = "₹${memory.amount ?: 0.0}",
-                                style = MaterialTheme.typography.titleMedium,
+                                text = "₹${memoryWithDetails.amount ?: 0.0}",
+                                style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.Black,
-                                color = if (memory.isPaid) MaterialTheme.colorScheme.primary else Color(0xFFEF5350)
+                                color = if (memoryWithDetails.isPaid) MaterialTheme.colorScheme.primary else Color(0xFFE53935)
                             )
                         }
 
-                        // Payment Status Action Chip
-                        val statusText = if (memory.isPaid) "money_paid" else "money_pending"
-                        val chipBg = if (memory.isPaid) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else Color(0xFFEF5350).copy(alpha = 0.15f)
-                        val chipTextCol = if (memory.isPaid) MaterialTheme.colorScheme.primary else Color(0xFFEF5350)
+                        // Payment Status Toggle Pill
+                        val statusText = if (memoryWithDetails.isPaid) "money_paid" else "money_pending"
+                        val chipBg = if (memoryWithDetails.isPaid) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else Color(0xFFEF5350).copy(alpha = 0.15f)
+                        val chipTextCol = if (memoryWithDetails.isPaid) MaterialTheme.colorScheme.primary else Color(0xFFE53935)
 
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
+                                .clip(RoundedCornerShape(8.dp))
                                 .background(chipBg)
-                                .clickable {
-                                    onUpdatePaidStatus(!memory.isPaid)
-                                }
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                .clickable { onUpdatePaidStatus(!memoryWithDetails.isPaid) }
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
                         ) {
                             Text(
                                 text = LanguageUtils.getString(statusText, language),
-                                style = MaterialTheme.typography.bodySmall,
-                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Black,
                                 color = chipTextCol
                             )
                         }
@@ -227,12 +267,12 @@ fun MemoryCard(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(vertical = 4.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.5f))
-                            .padding(8.dp),
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))
+                            .padding(12.dp),
                         horizontalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        if (!memory.parkingFloor.isNullOrEmpty()) {
+                        if (!memoryWithDetails.parkingFloor.isNullOrEmpty()) {
                             Column {
                                 Text(
                                     text = LanguageUtils.getString("parking_floor", language),
@@ -240,13 +280,13 @@ fun MemoryCard(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Text(
-                                    text = memory.parkingFloor,
+                                    text = memoryWithDetails.parkingFloor!!,
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
                         }
-                        if (!memory.parkingSlot.isNullOrEmpty()) {
+                        if (!memoryWithDetails.parkingSlot.isNullOrEmpty()) {
                             Column {
                                 Text(
                                     text = LanguageUtils.getString("parking_slot", language),
@@ -254,29 +294,29 @@ fun MemoryCard(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Text(
-                                    text = memory.parkingSlot,
+                                    text = memoryWithDetails.parkingSlot!!,
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
                         }
-                        if (!memory.location.isNullOrEmpty()) {
+                        if (!memoryWithDetails.location.isNullOrEmpty()) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "Location",
+                                    text = "Location Detail",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(
                                         imageVector = Icons.Default.Navigation,
-                                        contentDescription = "GPS",
+                                        contentDescription = "GPS Location",
                                         tint = accentColor,
-                                        modifier = Modifier.size(12.dp)
+                                        modifier = Modifier.size(14.dp)
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
-                                        text = memory.location,
+                                        text = memoryWithDetails.location!!,
                                         style = MaterialTheme.typography.bodyMedium,
                                         fontWeight = FontWeight.Bold,
                                         maxLines = 1,
@@ -289,34 +329,34 @@ fun MemoryCard(
                 }
 
                 "document" -> {
-                    if (memory.documentExpiry != null) {
-                        val isExpired = memory.documentExpiry < System.currentTimeMillis()
-                        val expiryDateStr = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date(memory.documentExpiry))
+                    if (memoryWithDetails.documentExpiry != null) {
+                        val isExpired = memoryWithDetails.documentExpiry!! < System.currentTimeMillis()
+                        val expiryDateStr = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date(memoryWithDetails.documentExpiry!!))
                         
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(vertical = 4.dp)
-                                .clip(RoundedCornerShape(8.dp))
+                                .clip(RoundedCornerShape(12.dp))
                                 .background(
                                     if (isExpired) Color(0xFFEF5350).copy(alpha = 0.1f) 
-                                    else MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)
+                                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
                                 )
-                                .padding(8.dp),
+                                .padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
-                                imageVector = if (isExpired) Icons.Default.Warning else Icons.Default.Event,
-                                contentDescription = "Expiry",
-                                tint = if (isExpired) Color(0xFFEF5350) else MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(16.dp)
+                                imageVector = if (isExpired) Icons.Default.Warning else Icons.Default.EventNote,
+                                contentDescription = "Expiry date",
+                                tint = if (isExpired) Color(0xFFEF5350) else accentColor,
+                                modifier = Modifier.size(18.dp)
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = "${LanguageUtils.getString("doc_expiry", language)}: $expiryDateStr",
-                                style = MaterialTheme.typography.bodySmall,
+                                style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = if (isExpired) Color(0xFFEF5350) else MaterialTheme.colorScheme.onSurfaceVariant
+                                color = if (isExpired) Color(0xFFD32F2F) else MaterialTheme.colorScheme.onSurface
                             )
                         }
                     }
@@ -331,20 +371,19 @@ fun MemoryCard(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(vertical = 4.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.3f))
-                                .padding(8.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f))
+                                .padding(12.dp)
                         ) {
                             Text(
-                                text = "Shopping Checklist ($completedCount/$totalCount)",
+                                text = "Shopping List ($completedCount/$totalCount)",
                                 style = MaterialTheme.typography.bodySmall,
                                 fontWeight = FontWeight.Bold,
                                 color = accentColor
                             )
                             
-                            Spacer(modifier = Modifier.height(4.dp))
+                            Spacer(modifier = Modifier.height(6.dp))
                             
-                            // Let's render max 3 items in preview, click check toggle updates checklist directly
                             checklistItems.take(4).forEachIndexed { index, item ->
                                 Row(
                                     modifier = Modifier
@@ -352,26 +391,22 @@ fun MemoryCard(
                                         .clickable {
                                             val updatedList = checklistItems.toMutableList()
                                             updatedList[index] = item.copy(second = !item.second)
-                                            // Save checklist back to JSON
-                                            val jsonArray = JSONArray()
-                                            for (i in updatedList) {
-                                                val obj = JSONObject()
-                                                obj.put("text", i.first)
-                                                obj.put("checked", i.second)
-                                                jsonArray.put(obj)
+                                            val builder = StringBuilder()
+                                            updatedList.forEach { i ->
+                                                builder.append("${i.first}|${i.second}\n")
                                             }
-                                            onUpdateChecklist(jsonArray.toString())
+                                            onUpdateChecklist(builder.toString().trim())
                                         }
-                                        .padding(vertical = 2.dp),
+                                        .padding(vertical = 4.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
                                         imageVector = if (item.second) Icons.Default.CheckCircle else Icons.Outlined.RadioButtonUnchecked,
-                                        contentDescription = "Check",
-                                        tint = if (item.second) accentColor else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(16.dp)
+                                        contentDescription = "Check item",
+                                        tint = if (item.second) accentColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                        modifier = Modifier.size(18.dp)
                                     )
-                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
                                     Text(
                                         text = item.first,
                                         style = MaterialTheme.typography.bodyMedium,
@@ -382,11 +417,12 @@ fun MemoryCard(
                             }
                             
                             if (totalCount > 4) {
+                                Spacer(modifier = Modifier.height(2.dp))
                                 Text(
                                     text = "+ ${totalCount - 4} more items",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(start = 22.dp, top = 2.dp)
+                                    modifier = Modifier.padding(start = 26.dp)
                                 )
                             }
                         }
@@ -398,14 +434,14 @@ fun MemoryCard(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(vertical = 4.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.5f))
-                            .padding(8.dp),
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))
+                            .padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         Text(
-                            text = "Doses:",
+                            text = "Daily Doses:",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontWeight = FontWeight.Bold
@@ -413,43 +449,46 @@ fun MemoryCard(
                         
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             Icon(
-                                imageVector = if (memory.medicineDoseMorning) Icons.Default.LightMode else Icons.Outlined.LightMode,
-                                contentDescription = "Morning",
-                                tint = if (memory.medicineDoseMorning) Color(0xFFFFB74D) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                imageVector = if (memoryWithDetails.medicineDoseMorning) Icons.Default.LightMode else Icons.Outlined.LightMode,
+                                contentDescription = "Morning Dose",
+                                tint = if (memoryWithDetails.medicineDoseMorning) Color(0xFFFFA726) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
                                 modifier = Modifier.size(16.dp)
                             )
                             Text(
-                                text = LanguageUtils.getString("priority_low", language), // simple representation
+                                text = "Morning",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = if (memory.medicineDoseMorning) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                                color = if (memoryWithDetails.medicineDoseMorning) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                fontWeight = if (memoryWithDetails.medicineDoseMorning) FontWeight.Bold else FontWeight.Normal
                             )
                         }
 
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             Icon(
-                                imageVector = if (memory.medicineDoseAfternoon) Icons.Default.WbSunny else Icons.Outlined.WbSunny,
-                                contentDescription = "Afternoon",
-                                tint = if (memory.medicineDoseAfternoon) Color(0xFFF57C00) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                imageVector = if (memoryWithDetails.medicineDoseAfternoon) Icons.Default.WbSunny else Icons.Outlined.WbSunny,
+                                contentDescription = "Afternoon Dose",
+                                tint = if (memoryWithDetails.medicineDoseAfternoon) Color(0xFFF57C00) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
                                 modifier = Modifier.size(16.dp)
                             )
                             Text(
-                                text = "Mid",
+                                text = "Noon",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = if (memory.medicineDoseAfternoon) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                                color = if (memoryWithDetails.medicineDoseAfternoon) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                fontWeight = if (memoryWithDetails.medicineDoseAfternoon) FontWeight.Bold else FontWeight.Normal
                             )
                         }
 
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             Icon(
-                                imageVector = if (memory.medicineDoseNight) Icons.Default.NightlightRound else Icons.Outlined.NightlightRound,
-                                contentDescription = "Night",
-                                tint = if (memory.medicineDoseNight) Color(0xFF5C6BC0) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                imageVector = if (memoryWithDetails.medicineDoseNight) Icons.Default.NightlightRound else Icons.Outlined.NightlightRound,
+                                contentDescription = "Night Dose",
+                                tint = if (memoryWithDetails.medicineDoseNight) Color(0xFF5C6BC0) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
                                 modifier = Modifier.size(16.dp)
                             )
                             Text(
                                 text = "Night",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = if (memory.medicineDoseNight) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                                color = if (memoryWithDetails.medicineDoseNight) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                fontWeight = if (memoryWithDetails.medicineDoseNight) FontWeight.Bold else FontWeight.Normal
                             )
                         }
                     }
@@ -460,38 +499,38 @@ fun MemoryCard(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(vertical = 4.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.5f))
-                            .padding(8.dp),
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))
+                            .padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        if (memory.price != null) {
+                        if (memoryWithDetails.price != null) {
                             Text(
-                                text = "Price: ₹${memory.price}",
+                                text = "Estimated Price: ₹${memoryWithDetails.price}",
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = accentColor
                             )
                         }
-                        if (!memory.urlLink.isNullOrEmpty()) {
+                        if (!memoryWithDetails.urlLink.isNullOrEmpty()) {
                             Row(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(4.dp))
+                                    .clip(RoundedCornerShape(6.dp))
                                     .background(accentColor.copy(alpha = 0.15f))
-                                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                                    .padding(horizontal = 8.dp, vertical = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Link,
-                                    contentDescription = "Link",
+                                    contentDescription = "Web Link",
                                     tint = accentColor,
-                                    modifier = Modifier.size(12.dp)
+                                    modifier = Modifier.size(14.dp)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = "Link",
-                                    style = MaterialTheme.typography.bodySmall,
+                                    text = "Buy Link",
+                                    style = MaterialTheme.typography.labelSmall,
                                     color = accentColor,
                                     fontWeight = FontWeight.Bold
                                 )
@@ -505,47 +544,48 @@ fun MemoryCard(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(vertical = 4.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.5f))
-                            .padding(8.dp),
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))
+                            .padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Column {
-                            if (!memory.person.isNullOrEmpty()) {
+                            if (!memoryWithDetails.person.isNullOrEmpty()) {
                                 Text(
-                                    text = "For: ${memory.person}",
+                                    text = "Recipient: ${memoryWithDetails.person}",
                                     style = MaterialTheme.typography.bodySmall,
-                                    fontWeight = FontWeight.SemiBold
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                            if (memory.amount != null) {
+                            if (memoryWithDetails.amount != null) {
                                 Text(
-                                    text = "Budget: ₹${memory.amount}",
-                                    style = MaterialTheme.typography.bodyMedium,
+                                    text = "Budget: ₹${memoryWithDetails.amount}",
+                                    style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = accentColor
                                 )
                             }
                         }
-                        if (!memory.urlLink.isNullOrEmpty()) {
+                        if (!memoryWithDetails.urlLink.isNullOrEmpty()) {
                             Row(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(4.dp))
+                                    .clip(RoundedCornerShape(6.dp))
                                     .background(accentColor.copy(alpha = 0.15f))
-                                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                                    .padding(horizontal = 8.dp, vertical = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.ShoppingBag,
-                                    contentDescription = "Link",
+                                    imageVector = Icons.Default.CardGiftcard,
+                                    contentDescription = "Gift Link",
                                     tint = accentColor,
-                                    modifier = Modifier.size(12.dp)
+                                    modifier = Modifier.size(14.dp)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
                                     text = "Ideas",
-                                    style = MaterialTheme.typography.bodySmall,
+                                    style = MaterialTheme.typography.labelSmall,
                                     color = accentColor,
                                     fontWeight = FontWeight.Bold
                                 )
@@ -555,78 +595,95 @@ fun MemoryCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            // Footer: Date / Time + Main Actions (Edit, Archive, Trash)
+            // Footer Section: Date / Reminders and Toolbar Actions with 48dp Touch Targets
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                // Reminder Indicator or Creation Date
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                // Left aligned: Last updated / created date OR Reminder Indicator
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(start = 2.dp)
+                ) {
                     if (memory.reminderDate != null) {
                         val reminderStr = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date(memory.reminderDate))
-                        Icon(
-                            imageVector = Icons.Default.NotificationsActive,
-                            contentDescription = "Reminder Active",
-                            tint = Color(0xFFFFA726),
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = reminderStr,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFFFFA726),
-                            fontWeight = FontWeight.Bold
-                        )
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color(0xFFFFF3E0))
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.NotificationsActive,
+                                    contentDescription = "Active Reminder Scheduled",
+                                    tint = Color(0xFFE65100),
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = reminderStr,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color(0xFFE65100),
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
                     } else {
-                        val createdStr = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date(memory.createdDate))
+                        val updatedStr = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date(memory.updatedDate))
                         Text(
-                            text = createdStr,
+                            text = "Saved $updatedStr",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                         )
                     }
                 }
 
-                // Actions: Edit, Archive, Trash
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                // Right aligned action buttons for Archive, Edit, Delete
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     // Archive Toggle Button
                     IconButton(
                         onClick = onArchiveToggle,
-                        modifier = Modifier.size(34.dp)
+                        modifier = Modifier.size(38.dp)
                     ) {
                         Icon(
                             imageVector = if (memory.status == "Archived") Icons.Default.Unarchive else Icons.Default.Archive,
-                            contentDescription = "Archive",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            contentDescription = if (memory.status == "Archived") "Unarchive memory" else "Archive memory",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                             modifier = Modifier.size(18.dp)
                         )
                     }
 
-                    // Edit Button
-                    IconButton(
-                        onClick = onEdit,
-                        modifier = Modifier.size(34.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Edit,
-                            contentDescription = "Edit",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(18.dp)
-                        )
+                    // Edit Button (Only if not in Trash)
+                    if (memory.status != "Trash") {
+                        IconButton(
+                            onClick = onEdit,
+                            modifier = Modifier.size(38.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = "Edit memory details",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
 
                     // Delete Button
                     IconButton(
                         onClick = onDelete,
-                        modifier = Modifier.size(34.dp)
+                        modifier = Modifier.size(38.dp)
                     ) {
                         Icon(
                             imageVector = if (memory.status == "Trash") Icons.Default.DeleteForever else Icons.Default.Delete,
-                            contentDescription = "Delete",
-                            tint = if (memory.status == "Trash") Color(0xFFEF5350) else MaterialTheme.colorScheme.onSurfaceVariant,
+                            contentDescription = if (memory.status == "Trash") "Delete memory permanently" else "Move memory to trash",
+                            tint = if (memory.status == "Trash") Color(0xFFEF5350) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                             modifier = Modifier.size(18.dp)
                         )
                     }

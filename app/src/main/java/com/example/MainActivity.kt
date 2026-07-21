@@ -27,6 +27,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
@@ -51,11 +52,16 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             val viewModel: MemoryViewModel = viewModel()
+            val updateViewModel: com.example.ui.viewmodel.UpdateViewModel = viewModel()
             val themeKey by viewModel.themeKey.collectAsState()
             val language by viewModel.language.collectAsState()
 
             ForgotTheme(themeKey = themeKey) {
-                MainAppCoordinator(viewModel = viewModel, language = language)
+                MainAppCoordinator(
+                    viewModel = viewModel,
+                    updateViewModel = updateViewModel,
+                    language = language
+                )
             }
         }
     }
@@ -64,6 +70,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun MainAppCoordinator(
     viewModel: MemoryViewModel,
+    updateViewModel: com.example.ui.viewmodel.UpdateViewModel,
     language: String
 ) {
     val navController = rememberNavController()
@@ -71,40 +78,52 @@ fun MainAppCoordinator(
     val currentRoute = navBackStackEntry?.destination?.route
 
     var showQuickAddDialog by remember { mutableStateOf(false) }
+    val isUpdateAvailable by updateViewModel.isUpdateAvailable.collectAsState()
+
+    // Dynamic frequency usage sorting for categories
+    val activeMemories by viewModel.activeMemories.collectAsState()
+    val categoryUsageCounts: Map<String, Int> = remember(activeMemories) {
+        activeMemories.groupBy { it.memory.category }.mapValues { it.value.size }
+    }
+    val sortedCategories = remember(categoryUsageCounts) {
+        CategoryRegistry.categories.sortedByDescending { categoryUsageCounts[it.name] ?: 0 }
+    }
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         bottomBar = {
-            // Render Bottom Navigation only for primary screens
             val isPrimaryScreen = currentRoute in listOf("home", "search", "reminders", "settings")
             if (isPrimaryScreen) {
+                // Highly polished NavigationBar with modern heights, colors and shapes
                 NavigationBar(
-                    modifier = Modifier.testTag("app_bottom_navigation")
+                    modifier = Modifier.testTag("app_bottom_navigation"),
+                    tonalElevation = 8.dp,
+                    containerColor = MaterialTheme.colorScheme.surface
                 ) {
                     // 1. Home
                     NavigationBarItem(
                         selected = currentRoute == "home",
                         onClick = { navController.navigate("home") { popUpTo("home") { inclusive = false } } },
-                        icon = { Icon(imageVector = Icons.Default.Home, contentDescription = "Home") },
-                        label = { Text(LanguageUtils.getString("home_tab", language)) }
+                        icon = { Icon(imageVector = Icons.Default.Home, contentDescription = "Home", modifier = Modifier.size(24.dp)) },
+                        label = { Text(LanguageUtils.getString("home_tab", language), fontWeight = FontWeight.Bold, fontSize = 11.sp) }
                     )
 
                     // 2. Search
                     NavigationBarItem(
                         selected = currentRoute == "search",
                         onClick = { navController.navigate("search") { popUpTo("home") } },
-                        icon = { Icon(imageVector = Icons.Default.Search, contentDescription = "Search") },
-                        label = { Text(LanguageUtils.getString("search_tab", language)) }
+                        icon = { Icon(imageVector = Icons.Default.Search, contentDescription = "Search", modifier = Modifier.size(24.dp)) },
+                        label = { Text(LanguageUtils.getString("search_tab", language), fontWeight = FontWeight.Bold, fontSize = 11.sp) }
                     )
 
-                    // 3. Quick Add (Center button acting as popup trigger)
+                    // 3. Central Focal Quick Add Button (Elevated Circle)
                     NavigationBarItem(
                         selected = false,
                         onClick = { showQuickAddDialog = true },
                         icon = {
                             Box(
                                 modifier = Modifier
-                                    .size(40.dp)
+                                    .size(46.dp)
                                     .clip(CircleShape)
                                     .background(MaterialTheme.colorScheme.primary),
                                 contentAlignment = Alignment.Center
@@ -112,11 +131,12 @@ fun MainAppCoordinator(
                                 Icon(
                                     imageVector = Icons.Default.Add,
                                     contentDescription = "Quick Add",
-                                    tint = Color.White
+                                    tint = Color.White,
+                                    modifier = Modifier.size(26.dp)
                                 )
                             }
                         },
-                        label = { Text(LanguageUtils.getString("quick_add", language)) },
+                        label = { Text(LanguageUtils.getString("quick_add", language), fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary, fontSize = 11.sp) },
                         modifier = Modifier.testTag("bottom_quick_add_tab")
                     )
 
@@ -124,22 +144,22 @@ fun MainAppCoordinator(
                     NavigationBarItem(
                         selected = currentRoute == "reminders",
                         onClick = { navController.navigate("reminders") { popUpTo("home") } },
-                        icon = { Icon(imageVector = Icons.Default.Notifications, contentDescription = "Reminders") },
-                        label = { Text(LanguageUtils.getString("reminders_tab", language)) }
+                        icon = { Icon(imageVector = Icons.Default.Notifications, contentDescription = "Reminders", modifier = Modifier.size(24.dp)) },
+                        label = { Text(LanguageUtils.getString("reminders_tab", language), fontWeight = FontWeight.Bold, fontSize = 11.sp) }
                     )
 
                     // 5. Settings
                     NavigationBarItem(
                         selected = currentRoute == "settings",
                         onClick = { navController.navigate("settings") { popUpTo("home") } },
-                        icon = { Icon(imageVector = Icons.Default.Settings, contentDescription = "Settings") },
-                        label = { Text(LanguageUtils.getString("settings_tab", language)) }
+                        icon = { Icon(imageVector = Icons.Default.Settings, contentDescription = "Settings", modifier = Modifier.size(24.dp)) },
+                        label = { Text(LanguageUtils.getString("settings_tab", language), fontWeight = FontWeight.Bold, fontSize = 11.sp) }
                     )
                 }
             }
         },
         floatingActionButton = {
-            // Render FAB only on Home screen for quick 5s capture flow
+            // Elevated Floating Action Button only on the dashboard
             if (currentRoute == "home") {
                 FloatingActionButton(
                     onClick = { showQuickAddDialog = true },
@@ -147,9 +167,10 @@ fun MainAppCoordinator(
                     contentColor = Color.White,
                     modifier = Modifier
                         .padding(bottom = 16.dp)
-                        .testTag("home_quick_add_fab")
+                        .testTag("home_quick_add_fab"),
+                    shape = CircleShape
                 ) {
-                    Icon(imageVector = Icons.Default.Add, contentDescription = "Quick Add FAB")
+                    Icon(imageVector = Icons.Default.Add, contentDescription = "Quick Add FAB", modifier = Modifier.size(28.dp))
                 }
             }
         }
@@ -161,7 +182,6 @@ fun MainAppCoordinator(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Home Screen route
             composable("home") {
                 HomeScreen(
                     viewModel = viewModel,
@@ -174,7 +194,6 @@ fun MainAppCoordinator(
                 )
             }
 
-            // Search Screen route
             composable("search") {
                 SearchScreen(
                     viewModel = viewModel,
@@ -185,7 +204,6 @@ fun MainAppCoordinator(
                 )
             }
 
-            // Reminders Screen route
             composable("reminders") {
                 RemindersScreen(
                     viewModel = viewModel,
@@ -196,10 +214,10 @@ fun MainAppCoordinator(
                 )
             }
 
-            // Settings/Profile Screen route
             composable("settings") {
                 SettingsScreen(
                     viewModel = viewModel,
+                    updateViewModel = updateViewModel,
                     onNavigateToRemember = { id, category ->
                         val route = if (id != null) "remember?memoryId=$id" else "remember?category=$category"
                         navController.navigate(route)
@@ -207,7 +225,6 @@ fun MainAppCoordinator(
                 )
             }
 
-            // Remember Screen (Add/Edit Form) route
             composable(
                 route = "remember?memoryId={memoryId}&category={category}",
                 arguments = listOf(
@@ -240,7 +257,7 @@ fun MainAppCoordinator(
         }
     }
 
-    // GORGEOUS BILINGUAL QUICK ADD MODAL
+    // REDESIGNED BILINGUAL QUICK ADD MODAL
     if (showQuickAddDialog) {
         Dialog(onDismissRequest = { showQuickAddDialog = false }) {
             Card(
@@ -254,9 +271,9 @@ fun MainAppCoordinator(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(18.dp),
+                        .padding(20.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     Text(
                         text = LanguageUtils.getString("quick_add", language),
@@ -267,19 +284,21 @@ fun MainAppCoordinator(
                     
                     Text(
                         text = "Choose memory type to save in 5 seconds:",
-                        style = MaterialTheme.typography.bodySmall,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(3),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(280.dp)
+                            .height(290.dp)
                     ) {
-                        items(CategoryRegistry.categories) { catItem ->
+                        items(sortedCategories) { catItem ->
+                            val count = categoryUsageCounts[catItem.name] ?: 0
                             Card(
                                 onClick = {
                                     showQuickAddDialog = false
@@ -290,40 +309,62 @@ fun MainAppCoordinator(
                                     .aspectRatio(1f)
                                     .testTag("quick_add_category_${catItem.name.lowercase()}"),
                                 colors = CardDefaults.cardColors(
-                                    containerColor = catItem.color.copy(alpha = 0.12f)
+                                    containerColor = catItem.color.copy(alpha = 0.1f)
                                 ),
                                 shape = RoundedCornerShape(16.dp)
                             ) {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .padding(8.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.Center
-                                ) {
-                                    Box(
+                                Box(modifier = Modifier.fillMaxSize()) {
+                                    // Circular Count Badge on top-right for premium stat touch
+                                    if (count > 0) {
+                                        Box(
+                                            modifier = Modifier
+                                                .padding(6.dp)
+                                                .size(18.dp)
+                                                .clip(CircleShape)
+                                                .background(catItem.color)
+                                                .align(Alignment.TopEnd),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = "$count",
+                                                color = Color.White,
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Black
+                                            )
+                                        }
+                                    }
+
+                                    Column(
                                         modifier = Modifier
-                                            .size(36.dp)
-                                            .clip(CircleShape)
-                                            .background(catItem.color.copy(alpha = 0.2f)),
-                                        contentAlignment = Alignment.Center
+                                            .fillMaxSize()
+                                            .padding(8.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.Center
                                     ) {
-                                        Icon(
-                                            imageVector = catItem.icon,
-                                            contentDescription = catItem.name,
-                                            tint = catItem.color,
-                                            modifier = Modifier.size(20.dp)
+                                        Box(
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .clip(CircleShape)
+                                                .background(catItem.color.copy(alpha = 0.2f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = catItem.icon,
+                                                contentDescription = catItem.name,
+                                                tint = catItem.color,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Text(
+                                            text = LanguageUtils.getString(catItem.name, language),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.Bold,
+                                            textAlign = TextAlign.Center,
+                                            maxLines = 1,
+                                            color = MaterialTheme.colorScheme.onSurface
                                         )
                                     }
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    Text(
-                                        text = LanguageUtils.getString(catItem.name, language),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontWeight = FontWeight.Bold,
-                                        textAlign = TextAlign.Center,
-                                        maxLines = 1,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
                                 }
                             }
                         }
@@ -335,11 +376,19 @@ fun MainAppCoordinator(
                     ) {
                         Text(
                             text = LanguageUtils.getString("cancel_button", language),
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Black,
+                            style = MaterialTheme.typography.titleMedium
                         )
                     }
                 }
             }
         }
+    }
+
+    if (isUpdateAvailable) {
+        com.example.ui.components.UpdateDialog(
+            viewModel = updateViewModel,
+            onDismiss = { updateViewModel.dismissUpdateDialog() }
+        )
     }
 }

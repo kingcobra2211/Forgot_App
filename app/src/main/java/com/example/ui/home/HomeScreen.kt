@@ -21,12 +21,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.example.data.model.Memory
+import androidx.compose.ui.unit.sp
+import com.example.data.model.MemoryWithDetails
 import com.example.ui.components.MemoryCard
 import com.example.ui.utils.CategoryRegistry
 import com.example.ui.utils.LanguageUtils
 import com.example.ui.viewmodel.MemoryViewModel
+import java.text.SimpleDateFormat
 import java.util.*
 
 @Composable
@@ -41,24 +44,28 @@ fun HomeScreen(
     val reminders by viewModel.activeReminders.collectAsState()
     val selectedCategory by viewModel.selectedCategory.collectAsState()
 
-    // Determine current time-of-day greeting
-    val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-    val greetingKey = when {
-        hour in 5..11 -> "greeting_morning"
-        hour in 12..16 -> "greeting_afternoon"
-        else -> "greeting_evening"
+    // Calculate dynamically sorted categories based on frequency of usage
+    val categoryUsageCounts = remember(activeMemories) {
+        activeMemories.groupBy { it.memory.category }.mapValues { it.value.size }
     }
-    
-    // Stats Calculations
-    val totalCount = activeMemories.size
-    val completedCount = activeMemories.count { it.status == "Completed" }
-    val pendingCount = reminders.count { it.reminderDate != null && it.reminderDate > System.currentTimeMillis() }
+    val sortedCategories = remember(categoryUsageCounts) {
+        CategoryRegistry.categories.sortedByDescending { categoryUsageCounts[it.name] ?: 0 }
+    }
 
+    // Filter upcoming active reminders
+    val upcomingReminders = remember(activeMemories) {
+        val now = System.currentTimeMillis()
+        activeMemories
+            .filter { it.memory.reminderDate != null && it.memory.reminderDate!! > now }
+            .sortedBy { it.memory.reminderDate }
+    }
+
+    // Separate pinned and recent memories
     val pinnedMemories = remember(activeMemories) {
-        activeMemories.filter { it.isPinned }
+        activeMemories.filter { it.memory.isPinned }
     }
     val unpinnedMemories = remember(activeMemories) {
-        activeMemories.filter { !it.isPinned }
+        activeMemories.filter { !it.memory.isPinned }
     }
 
     Scaffold(
@@ -67,9 +74,8 @@ fun HomeScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(MaterialTheme.colorScheme.background)
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .padding(horizontal = 20.dp, vertical = 12.dp)
             ) {
-                // App Logo / Title & Simple Billing/Premium Indicator
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -84,22 +90,23 @@ fun HomeScreen(
                         )
                         Text(
                             text = LanguageUtils.getString("tagline", language),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                         )
                     }
-                    
-                    // Billing/Premium Free indicator
+
+                    // Version Tag
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
                     ) {
                         Text(
-                            text = "v1.0 Free",
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.Bold,
+                            text = "v1.0 Pro",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Black,
                             color = MaterialTheme.colorScheme.primary
                         )
                     }
@@ -112,178 +119,128 @@ fun HomeScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
                 .testTag("home_screen_lazy_column"),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
-            // Greeting & Interactive search trigger
+            // Header: Dynamic memory focus prompt
             item {
-                Column(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp, bottom = 4.dp)
+                ) {
                     Text(
-                        text = LanguageUtils.getString(greetingKey, language),
+                        text = "Save before you forget.",
                         style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Black
+                        fontWeight = FontWeight.Black,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = LanguageUtils.getString("greeting_question", language),
+                        text = "What would you like to remember today?",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    
-                    Spacer(modifier = Modifier.height(14.dp))
-                    
-                    // Fake search box
-                    Card(
-                        onClick = onNavigateToSearch,
+                }
+            }
+
+            // 1. PRIORITIZED SECTION: Search Memories Bar
+            item {
+                Card(
+                    onClick = onNavigateToSearch,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("home_search_bar_trigger"),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                    ),
+                    shape = RoundedCornerShape(16.dp),
+                    border = CardDefaults.outlinedCardBorder().copy(
+                        brush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.outline.copy(alpha = 0.08f))
+                    )
+                ) {
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .testTag("home_search_bar_trigger"),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-                        ),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Search,
-                                contentDescription = "Search icon",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text(
-                                text = LanguageUtils.getString("search_hint", language),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                maxLines = 1
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Dashboard Stats Cards
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    // Total Memories Card
-                    Card(
-                        modifier = Modifier.weight(1.2f),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Text(
-                                text = LanguageUtils.getString("total_memories", language),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "$totalCount",
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Black
-                            )
-                        }
-                    }
-
-                    // Reminders Card
-                    Card(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable { onNavigateToReminders() },
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFB74D).copy(alpha = 0.15f)),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Text(
-                                text = LanguageUtils.getString("pending_items", language),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFFF57C00),
-                                fontWeight = FontWeight.Bold
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text(
-                                    text = "$pendingCount",
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.Black,
-                                    color = Color(0xFFF57C00)
-                                )
-                                Icon(
-                                    imageVector = Icons.Default.NotificationsActive,
-                                    contentDescription = "Active",
-                                    tint = Color(0xFFF57C00),
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Horizontal Categories Quick Filters Strip
-            item {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = LanguageUtils.getString("categories", language),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "Search icon",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
                         )
-                        if (selectedCategory != null) {
-                            Text(
-                                text = "Clear filter",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.clickable { viewModel.selectedCategory.value = null }
-                            )
-                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = "Search Memories...",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
                     }
+                }
+            }
+
+            // 2. PRIORITIZED SECTION: Quick Capture (sorted by frequency of use)
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Quick Capture",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Black,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
 
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        items(CategoryRegistry.categories) { catItem ->
-                            val isSelected = selectedCategory?.lowercase() == catItem.name.lowercase()
-                            val bg = if (isSelected) catItem.color else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-                            val tc = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-
+                        items(sortedCategories) { catItem ->
+                            val count = categoryUsageCounts[catItem.name] ?: 0
                             Card(
                                 onClick = {
-                                    viewModel.selectedCategory.value = if (isSelected) null else catItem.name
+                                    onNavigateToRemember(null, catItem.name)
                                 },
-                                colors = CardDefaults.cardColors(containerColor = bg),
-                                shape = RoundedCornerShape(12.dp)
+                                colors = CardDefaults.cardColors(
+                                    containerColor = catItem.color.copy(alpha = 0.1f)
+                                ),
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier.testTag("quick_capture_${catItem.name.lowercase()}")
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Icon(
-                                        imageVector = catItem.icon,
-                                        contentDescription = catItem.name,
-                                        tint = tc,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = LanguageUtils.getString(catItem.name, language),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = tc
-                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .size(28.dp)
+                                            .clip(CircleShape)
+                                            .background(catItem.color.copy(alpha = 0.2f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = catItem.icon,
+                                            contentDescription = catItem.name,
+                                            tint = catItem.color,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Column {
+                                        Text(
+                                            text = LanguageUtils.getString(catItem.name, language),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        if (count > 0) {
+                                            Text(
+                                                text = "$count saved",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = catItem.color,
+                                                fontWeight = FontWeight.Black
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -291,56 +248,252 @@ fun HomeScreen(
                 }
             }
 
-            // Pinned Section
+            // 3. PRIORITIZED SECTION: Upcoming Reminders
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.NotificationsActive,
+                                contentDescription = "Reminders",
+                                tint = Color(0xFFF57C00),
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Upcoming Reminders",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Black,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+
+                        if (upcomingReminders.isNotEmpty()) {
+                            Text(
+                                text = "View All",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.clickable { onNavigateToReminders() }
+                            )
+                        }
+                    }
+
+                    if (upcomingReminders.isEmpty()) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)
+                            ),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.NotificationsNone,
+                                    contentDescription = "No upcoming reminders",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text(
+                                        text = "All Caught Up!",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "No reminders scheduled for future.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            items(upcomingReminders) { memoryWithDetails ->
+                                val memory = memoryWithDetails.memory
+                                val catItem = CategoryRegistry.getCategoryItem(memory.category)
+                                val dateStr = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date(memory.reminderDate!!))
+                                Card(
+                                    onClick = { onNavigateToRemember(memory.id, null) },
+                                    modifier = Modifier
+                                        .width(200.dp)
+                                        .testTag("upcoming_reminder_card_${memory.id}"),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+                                    ),
+                                    shape = RoundedCornerShape(14.dp)
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(24.dp)
+                                                    .clip(CircleShape)
+                                                    .background(catItem.color.copy(alpha = 0.2f)),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = catItem.icon,
+                                                    contentDescription = memory.category,
+                                                    tint = catItem.color,
+                                                    modifier = Modifier.size(12.dp)
+                                                )
+                                            }
+                                            
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(4.dp))
+                                                    .background(Color(0xFFFFF3E0))
+                                                    .padding(horizontal = 4.dp, vertical = 2.dp)
+                                            ) {
+                                                Text(
+                                                    text = "ALARM",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = Color(0xFFE65100),
+                                                    fontSize = 8.sp,
+                                                    fontWeight = FontWeight.Black
+                                                )
+                                            }
+                                        }
+                                        
+                                        Spacer(modifier = Modifier.height(10.dp))
+                                        
+                                        Text(
+                                            text = memory.title,
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        
+                                        Text(
+                                            text = dateStr,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color(0xFFE65100),
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 4. PRIORITIZED SECTION: Pinned Memories
             if (pinnedMemories.isNotEmpty()) {
                 item {
-                    Text(
-                        text = LanguageUtils.getString("pinned_items", language),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Black,
-                        color = MaterialTheme.colorScheme.primary
-                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.PushPin,
+                                contentDescription = "Pinned",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Pinned Memories",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Black,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
                 }
-                items(pinnedMemories) { memory ->
+
+                items(pinnedMemories) { memoryWithDetails ->
+                    val memory = memoryWithDetails.memory
                     MemoryCard(
-                        memory = memory,
+                        memoryWithDetails = memoryWithDetails,
                         language = language,
                         onEdit = { onNavigateToRemember(memory.id, null) },
                         onPinToggle = { pinned -> viewModel.pinMemory(memory, pinned) },
                         onFavoriteToggle = { fav -> viewModel.favoriteMemory(memory, fav) },
                         onArchiveToggle = { viewModel.archiveMemory(memory) },
                         onDelete = { viewModel.moveMemoryToTrash(memory) },
-                        onUpdateChecklist = { newJson -> viewModel.updateMemory(memory.copy(checklistJson = newJson)) },
-                        onUpdatePaidStatus = { paid -> viewModel.updateMemory(memory.copy(isPaid = paid)) }
+                        onUpdateChecklist = { newItems ->
+                            val updatedDetail = memoryWithDetails.shoppingDetail?.copy(shoppingItems = newItems)
+                            viewModel.saveMemory(memory, updatedDetail)
+                        },
+                        onUpdatePaidStatus = { paid ->
+                            val updatedDetail = memoryWithDetails.moneyDetail?.copy(status = if (paid) "Returned" else "Pending")
+                            viewModel.saveMemory(memory, updatedDetail)
+                        }
                     )
                 }
             }
 
-            // Recent Section Header
+            // 5. PRIORITIZED SECTION: Recent Memories
             item {
-                Text(
-                    text = if (selectedCategory != null) "Filtered Memories" else LanguageUtils.getString("recent_memories", language),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = if (selectedCategory != null) "Filtered Memories" else "Recent Memories",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Black,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    
+                    if (selectedCategory != null) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.clickable { viewModel.selectedCategory.value = null }
+                        ) {
+                            Text(
+                                text = "Filtering by ${LanguageUtils.getString(selectedCategory!!, language)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Clear filter",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    }
+                }
             }
 
-            // Filter memories by category if filter is active
+            // Apply filter logic
             val filteredUnpinned = if (selectedCategory != null) {
-                unpinnedMemories.filter { it.category.lowercase() == selectedCategory!!.lowercase() }
+                unpinnedMemories.filter { it.memory.category.lowercase() == selectedCategory!!.lowercase() }
             } else {
                 unpinnedMemories
             }
 
             if (filteredUnpinned.isEmpty()) {
                 item {
-                    // Modern Empty State Card
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 12.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)),
-                        shape = RoundedCornerShape(16.dp)
+                            .padding(vertical = 4.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)
+                        ),
+                        shape = RoundedCornerShape(18.dp)
                     ) {
                         Column(
                             modifier = Modifier
@@ -350,40 +503,56 @@ fun HomeScreen(
                             verticalArrangement = Arrangement.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Default.StickyNote2,
-                                contentDescription = "Empty",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                                modifier = Modifier.size(54.dp)
+                                imageVector = Icons.Default.NoteAlt,
+                                contentDescription = "No memories yet",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+                                modifier = Modifier.size(48.dp)
                             )
-                            Spacer(modifier = Modifier.height(14.dp))
+                            Spacer(modifier = Modifier.height(12.dp))
                             Text(
-                                text = LanguageUtils.getString("no_memories_found", language),
+                                text = "Save your first memory!",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 textAlign = TextAlign.Center
                             )
+                            Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = LanguageUtils.getString("empty_state_tip", language),
+                                text = "Write down where you put your keys, your parking spot, medicine dosage, or checklist. It takes just 5 seconds.",
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.padding(start = 12.dp, top = 4.dp, end = 12.dp, bottom = 4.dp)
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                                textAlign = TextAlign.Center
                             )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Button(
+                                onClick = { onNavigateToRemember(null, "Note") },
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                            ) {
+                                Icon(imageVector = Icons.Default.Add, contentDescription = "Create", tint = Color.White)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Add Memory Now", color = Color.White, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }
             } else {
-                items(filteredUnpinned) { memory ->
+                items(filteredUnpinned) { memoryWithDetails ->
+                    val memory = memoryWithDetails.memory
                     MemoryCard(
-                        memory = memory,
+                        memoryWithDetails = memoryWithDetails,
                         language = language,
                         onEdit = { onNavigateToRemember(memory.id, null) },
                         onPinToggle = { pinned -> viewModel.pinMemory(memory, pinned) },
                         onFavoriteToggle = { fav -> viewModel.favoriteMemory(memory, fav) },
                         onArchiveToggle = { viewModel.archiveMemory(memory) },
                         onDelete = { viewModel.moveMemoryToTrash(memory) },
-                        onUpdateChecklist = { newJson -> viewModel.updateMemory(memory.copy(checklistJson = newJson)) },
-                        onUpdatePaidStatus = { paid -> viewModel.updateMemory(memory.copy(isPaid = paid)) }
+                        onUpdateChecklist = { newItems ->
+                            val updatedDetail = memoryWithDetails.shoppingDetail?.copy(shoppingItems = newItems)
+                            viewModel.saveMemory(memory, updatedDetail)
+                        },
+                        onUpdatePaidStatus = { paid ->
+                            val updatedDetail = memoryWithDetails.moneyDetail?.copy(status = if (paid) "Returned" else "Pending")
+                            viewModel.saveMemory(memory, updatedDetail)
+                        }
                     )
                 }
             }

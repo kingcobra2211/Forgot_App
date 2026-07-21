@@ -5,7 +5,7 @@ import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.database.AppDatabase
-import com.example.data.model.Memory
+import com.example.data.model.*
 import com.example.data.repository.MemoryRepository
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
@@ -19,10 +19,10 @@ class MemoryViewModel(application: Application) : AndroidViewModel(application) 
     private val repository: MemoryRepository
     private val sharedPrefs = application.getSharedPreferences("forgot_prefs", Context.MODE_PRIVATE)
 
-    val activeMemories: StateFlow<List<Memory>>
-    val archivedMemories: StateFlow<List<Memory>>
-    val trashMemories: StateFlow<List<Memory>>
-    val activeReminders: StateFlow<List<Memory>>
+    val activeMemories: StateFlow<List<MemoryWithDetails>>
+    val archivedMemories: StateFlow<List<MemoryWithDetails>>
+    val trashMemories: StateFlow<List<MemoryWithDetails>>
+    val activeReminders: StateFlow<List<MemoryWithDetails>>
 
     val searchQuery = MutableStateFlow("")
     val selectedCategory = MutableStateFlow<String?>(null)
@@ -63,20 +63,21 @@ class MemoryViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     // Reactive Search Results combining query, category filter and active memories
-    val searchResults: StateFlow<List<Memory>> = combine(
+    val searchResults: StateFlow<List<MemoryWithDetails>> = combine(
         activeMemories,
         searchQuery,
         selectedCategory
     ) { memories, query, category ->
-        memories.filter { memory ->
+        memories.filter { memoryWithDetails ->
+            val memory = memoryWithDetails.memory
             val matchesQuery = query.isEmpty() ||
                 memory.title.contains(query, ignoreCase = true) ||
                 memory.description.contains(query, ignoreCase = true) ||
                 memory.category.contains(query, ignoreCase = true) ||
-                (memory.person?.contains(query, ignoreCase = true) ?: false) ||
-                (memory.location?.contains(query, ignoreCase = true) ?: false) ||
-                (memory.parkingFloor?.contains(query, ignoreCase = true) ?: false) ||
-                (memory.parkingSlot?.contains(query, ignoreCase = true) ?: false)
+                (memoryWithDetails.person?.contains(query, ignoreCase = true) ?: false) ||
+                (memoryWithDetails.location?.contains(query, ignoreCase = true) ?: false) ||
+                (memoryWithDetails.parkingFloor?.contains(query, ignoreCase = true) ?: false) ||
+                (memoryWithDetails.parkingSlot?.contains(query, ignoreCase = true) ?: false)
 
             val matchesCategory = category == null || memory.category.lowercase() == category.lowercase()
             matchesQuery && matchesCategory
@@ -93,9 +94,9 @@ class MemoryViewModel(application: Application) : AndroidViewModel(application) 
         sharedPrefs.edit().putString("language_key", newLanguage).apply()
     }
 
-    fun saveMemory(memory: Memory) {
+    fun saveMemory(memory: Memory, detail: Any? = null) {
         viewModelScope.launch {
-            repository.insertMemory(memory)
+            repository.saveMemoryWithDetails(memory, detail)
         }
     }
 
@@ -182,7 +183,8 @@ class MemoryViewModel(application: Application) : AndroidViewModel(application) 
     private fun performTrashCleanup() {
         viewModelScope.launch {
             val thirtyDaysAgo = System.currentTimeMillis() - 30 * 24 * 60 * 60 * 1000L
-            trashMemories.first().forEach { memory ->
+            trashMemories.first().forEach { memoryWithDetails ->
+                val memory = memoryWithDetails.memory
                 if (memory.trashDate != null && memory.trashDate < thirtyDaysAgo) {
                     repository.deleteMemory(memory)
                 }
@@ -194,11 +196,11 @@ class MemoryViewModel(application: Application) : AndroidViewModel(application) 
     fun exportBackup(context: Context): String? {
         return try {
             val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
-            val listType = Types.newParameterizedType(List::class.java, Memory::class.java)
-            val adapter = moshi.adapter<List<Memory>>(listType)
+            val listType = Types.newParameterizedType(List::class.java, MemoryWithDetails::class.java)
+            val adapter = moshi.adapter<List<MemoryWithDetails>>(listType)
 
             // Let's export active, archived and trash memories
-            val allList = mutableListOf<Memory>()
+            val allList = mutableListOf<MemoryWithDetails>()
             allList.addAll(activeMemories.value)
             allList.addAll(archivedMemories.value)
             allList.addAll(trashMemories.value)
@@ -214,16 +216,27 @@ class MemoryViewModel(application: Application) : AndroidViewModel(application) 
     fun importBackup(json: String): Boolean {
         return try {
             val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
-            val listType = Types.newParameterizedType(List::class.java, Memory::class.java)
-            val adapter = moshi.adapter<List<Memory>>(listType)
+            val listType = Types.newParameterizedType(List::class.java, MemoryWithDetails::class.java)
+            val adapter = moshi.adapter<List<MemoryWithDetails>>(listType)
 
             val importedMemories = adapter.fromJson(json) ?: return false
 
             viewModelScope.launch {
                 repository.clearAll()
-                for (memory in importedMemories) {
-                    // Reset IDs to ensure fresh insertion without conflicts, or keep them if unique
-                    repository.insertMemory(memory.copy(id = 0))
+                for (memoryWithDetails in importedMemories) {
+                    val baseMemory = memoryWithDetails.memory.copy(id = 0)
+                    val detail = when (baseMemory.category.lowercase()) {
+                        "parking" -> memoryWithDetails.parkingDetail
+                        "money" -> memoryWithDetails.moneyDetail
+                        "document" -> memoryWithDetails.documentDetail
+                        "medicine" -> memoryWithDetails.medicineDetail
+                        "shopping" -> memoryWithDetails.shoppingDetail
+                        "place" -> memoryWithDetails.placeDetail
+                        "gift idea" -> memoryWithDetails.giftDetail
+                        "wishlist" -> memoryWithDetails.wishlistDetail
+                        else -> null
+                    }
+                    repository.saveMemoryWithDetails(baseMemory, detail)
                 }
             }
             true
