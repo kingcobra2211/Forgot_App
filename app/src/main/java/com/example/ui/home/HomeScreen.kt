@@ -223,7 +223,7 @@ fun HomeScreen(
                                 modifier = Modifier
                                     .testTag("quick_capture_${catItem.name.lowercase()}")
                                     .widthIn(min = 130.dp, max = 180.dp)
-                                    .aspectRatio(1.2f)
+                                    .height(85.dp)
                             ) {
                                 Column(
                                     modifier = Modifier
