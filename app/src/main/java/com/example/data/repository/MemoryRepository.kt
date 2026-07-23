@@ -1,10 +1,15 @@
 package com.example.data.repository
 
+import androidx.room.withTransaction
+import com.example.data.database.AppDatabase
 import com.example.data.dao.MemoryDao
 import com.example.data.model.*
 import kotlinx.coroutines.flow.Flow
 
-class MemoryRepository(private val memoryDao: MemoryDao) {
+class MemoryRepository(
+    private val database: AppDatabase,
+    private val memoryDao: MemoryDao
+) {
     val activeMemories: Flow<List<MemoryWithDetails>> = memoryDao.getActiveMemories()
     val archivedMemories: Flow<List<MemoryWithDetails>> = memoryDao.getArchivedMemories()
     val trashMemories: Flow<List<MemoryWithDetails>> = memoryDao.getTrashMemories()
@@ -26,7 +31,7 @@ class MemoryRepository(private val memoryDao: MemoryDao) {
         memoryDao.deleteMemory(memory)
     }
 
-    suspend fun saveMemoryWithDetails(memory: Memory, detail: Any?) {
+    suspend fun saveMemoryWithDetails(memory: Memory, detail: Any?): Memory = database.withTransaction {
         val memoryId = if (memory.id == 0) {
             memoryDao.insertMemory(memory).toInt()
         } else {
@@ -50,6 +55,8 @@ class MemoryRepository(private val memoryDao: MemoryDao) {
                 is WishlistDetail -> memoryDao.insertWishlistDetail(detail.copy(memoryId = memoryId))
             }
         }
+
+        memory.copy(id = memoryId)
     }
 
     suspend fun clearAllDetailsForMemory(memoryId: Int) {
@@ -69,6 +76,25 @@ class MemoryRepository(private val memoryDao: MemoryDao) {
 
     suspend fun clearAll() {
         memoryDao.clearAll()
+    }
+
+    suspend fun restoreBackup(memories: List<MemoryWithDetails>) = database.withTransaction {
+        memoryDao.clearAll()
+        memories.forEach { memoryWithDetails ->
+            val baseMemory = memoryWithDetails.memory.copy(id = 0)
+            val detail = when (baseMemory.category.lowercase()) {
+                "parking" -> memoryWithDetails.parkingDetail
+                "money" -> memoryWithDetails.moneyDetail
+                "document" -> memoryWithDetails.documentDetail
+                "medicine" -> memoryWithDetails.medicineDetail
+                "shopping" -> memoryWithDetails.shoppingDetail
+                "place" -> memoryWithDetails.placeDetail
+                "gift idea" -> memoryWithDetails.giftDetail
+                "wishlist" -> memoryWithDetails.wishlistDetail
+                else -> null
+            }
+            saveMemoryWithDetails(baseMemory, detail)
+        }
     }
 
     fun searchMemories(query: String, status: String = "Active"): Flow<List<MemoryWithDetails>> {

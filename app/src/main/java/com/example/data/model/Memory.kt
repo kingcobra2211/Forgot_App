@@ -19,6 +19,7 @@ data class Memory(
     val longitude: Double? = null,
     val photoPath: String? = null,
     val voicePath: String? = null,
+    val attachmentPaths: String = "",
     val isPinned: Boolean = false,
     val isFavorite: Boolean = false,
     val trashDate: Long? = null

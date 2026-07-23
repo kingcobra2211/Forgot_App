@@ -88,7 +88,7 @@ fun MemoryCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
+                .padding(metrics.horizontalPadding)
         ) {
             // Header Row: Category Badge + Title and Labels + Quick Status Indicators
             Row(
@@ -98,7 +98,7 @@ fun MemoryCard(
                 // Large stylish Category Icon badge
                 Box(
                     modifier = Modifier
-                        .size(44.dp)
+                        .size(44.dp * metrics.iconScale)
                         .clip(CircleShape)
                         .background(accentColor.copy(alpha = 0.12f)),
                     contentAlignment = Alignment.Center
@@ -107,11 +107,11 @@ fun MemoryCard(
                         imageVector = categoryItem.icon,
                         contentDescription = memory.category,
                         tint = accentColor,
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(22.dp * metrics.iconScale)
                     )
                 }
 
-                Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(metrics.itemSpacing))
 
                 // Title and Category Label
                 Column(modifier = Modifier.weight(1f)) {

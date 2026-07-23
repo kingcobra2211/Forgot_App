@@ -138,6 +138,15 @@ fun RememberScreen(
                 ?: existingMemory?.photoPath
         )
     }
+    val attachmentPaths = remember {
+        mutableStateListOf<String>().apply {
+            existingMemory?.attachmentPaths
+                ?.split("\n")
+                ?.filter { it.isNotBlank() }
+                ?.forEach(::add)
+            if (isEmpty() && photoPathState != null) add(photoPathState!!)
+        }
+    }
     
     var voiceFilePath by remember { mutableStateOf<String?>(existingMemory?.voicePath) }
     
@@ -183,6 +192,7 @@ fun RememberScreen(
     var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
     var isRecording by remember { mutableStateOf(false) }
     var isPlaying by remember { mutableStateOf(false) }
+    var pendingRecordingPath by remember { mutableStateOf<String?>(null) }
 
     // Auto cleanup media resources on dispose
     DisposableEffect(Unit) {
@@ -190,6 +200,7 @@ fun RememberScreen(
             try {
                 mediaRecorder?.release()
                 mediaPlayer?.release()
+                pendingRecordingPath?.let { File(it).delete() }
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -201,7 +212,7 @@ fun RememberScreen(
         try {
             val storageDir = File(context.filesDir, "attachments")
             if (!storageDir.exists()) storageDir.mkdirs()
-            val voiceFile = File(storageDir, "audio_${System.currentTimeMillis()}.mp3")
+            val voiceFile = File(storageDir, "audio_${System.currentTimeMillis()}.m4a")
             
             @Suppress("DEPRECATION")
             val recorder = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
@@ -217,7 +228,7 @@ fun RememberScreen(
                 start()
             }
             mediaRecorder = recorder
-            voiceFilePath = voiceFile.absolutePath
+            pendingRecordingPath = voiceFile.absolutePath
             isRecording = true
         } catch (e: Exception) {
             e.printStackTrace()
@@ -226,21 +237,29 @@ fun RememberScreen(
     }
 
     val stopRecording = {
+        val recordingPath = pendingRecordingPath
         try {
-            mediaRecorder?.apply {
-                stop()
-                release()
-            }
+            mediaRecorder?.stop()
+            mediaRecorder?.release()
             mediaRecorder = null
-            isRecording = false
+            voiceFilePath = recordingPath
+            Toast.makeText(context, "Voice note saved", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
-            e.printStackTrace()
+            recordingPath?.let { File(it).delete() }
+            Toast.makeText(context, "Recording was not saved", Toast.LENGTH_SHORT).show()
+        } finally {
+            mediaRecorder = null
+            pendingRecordingPath = null
+            isRecording = false
         }
     }
 
     val startPlayback = {
         voiceFilePath?.let { path ->
             try {
+                mediaPlayer?.runCatching { release() }
+                mediaPlayer = null
+                isPlaying = false
                 val player = MediaPlayer().apply {
                     setDataSource(path)
                     prepare()
@@ -261,16 +280,12 @@ fun RememberScreen(
     }
 
     val stopPlayback = {
-        try {
-            mediaPlayer?.apply {
-                stop()
-                release()
-            }
-            mediaPlayer = null
-            isPlaying = false
-        } catch (e: Exception) {
-            e.printStackTrace()
+        mediaPlayer?.runCatching {
+            if (isPlaying) stop()
+            release()
         }
+        mediaPlayer = null
+        isPlaying = false
     }
 
     val deleteRecording = {
@@ -287,6 +302,16 @@ fun RememberScreen(
         } catch (e: Exception) {
             e.printStackTrace()
         }
+    }
+
+    val addAttachment = { path: String ->
+        if (path !in attachmentPaths) attachmentPaths.add(path)
+        if (photoPathState == null) photoPathState = path
+    }
+    val removeAttachment = { path: String ->
+        attachmentPaths.remove(path)
+        if (photoPathState == path) photoPathState = attachmentPaths.firstOrNull()
+        File(path).takeIf { it.exists() }?.delete()
     }
 
     // Launchers
@@ -312,7 +337,7 @@ fun RememberScreen(
                 destFile.outputStream().use { out ->
                     bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
                 }
-                photoPathState = destFile.absolutePath
+                addAttachment(destFile.absolutePath)
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -336,7 +361,7 @@ fun RememberScreen(
             val fileName = "img_${System.currentTimeMillis()}.jpg"
             val path = copyUriToInternalStorage(context, uri, fileName)
             if (path != null) {
-                photoPathState = path
+                addAttachment(path)
             }
         }
     }
@@ -349,7 +374,7 @@ fun RememberScreen(
             val fileName = "doc_${System.currentTimeMillis()}_$originalName"
             val path = copyUriToInternalStorage(context, uri, fileName)
             if (path != null) {
-                photoPathState = path
+                addAttachment(path)
             }
         }
     }
@@ -782,7 +807,7 @@ fun RememberScreen(
                                             photoPath = photoPathState,
                                             onPhotoSelected = { photoPathState = it },
                                             onCameraClicked = {
-                                                micPermissionLauncher.launch(android.Manifest.permission.CAMERA)
+                                                cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
                                             },
                                             onGalleryClicked = { galleryLauncher.launch("image/*") },
                                             onDocClicked = { documentLauncher.launch("*/*") }
@@ -1242,8 +1267,8 @@ fun RememberScreen(
                     // Display attached photo / document if it exists
                     photoPathState?.let { path ->
                         val isPdf = path.endsWith(".pdf", ignoreCase = true)
-                        if (isPdf) {
-                            // PDF Document layout
+                        val isImage = path.substringAfterLast('.', "").lowercase() in setOf("jpg", "jpeg", "png", "webp", "gif")
+                        if (!isImage) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -1259,7 +1284,7 @@ fun RememberScreen(
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.Description,
-                                        contentDescription = "PDF Document",
+                                        contentDescription = "Attached file",
                                         tint = Color(0xFFEF5350),
                                         modifier = Modifier.size(36.dp)
                                     )
@@ -1273,13 +1298,13 @@ fun RememberScreen(
                                             overflow = TextOverflow.Ellipsis
                                         )
                                         Text(
-                                            text = "PDF Document",
+                                            text = if (isPdf) "PDF Document" else "Attached file",
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                                         )
                                     }
                                 }
-                                IconButton(onClick = { photoPathState = null }) {
+                                IconButton(onClick = { removeAttachment(path) }) {
                                     Icon(imageVector = Icons.Default.Delete, contentDescription = "Delete document", tint = Color(0xFFEF5350))
                                 }
                             }
@@ -1298,7 +1323,7 @@ fun RememberScreen(
                                     modifier = Modifier.fillMaxSize()
                                 )
                                 IconButton(
-                                    onClick = { photoPathState = null },
+                                    onClick = { removeAttachment(path) },
                                     modifier = Modifier
                                         .align(Alignment.TopEnd)
                                         .padding(8.dp)
@@ -1310,17 +1335,42 @@ fun RememberScreen(
                         }
                     }
 
-                    // Display attachment picker if photo is null and not document category (which has specific attachment options)
-                    if (photoPathState == null && category.lowercase() == "note") {
-                        AttachmentPickerRow(
-                            category = category,
-                            photoPath = photoPathState,
-                            onPhotoSelected = { photoPathState = it },
-                            onCameraClicked = { cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA) },
-                            onGalleryClicked = { galleryLauncher.launch("image/*") },
-                            onDocClicked = { documentLauncher.launch("*/*") }
-                        )
+                    if (attachmentPaths.size > 1) {
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(attachmentPaths.filter { it != photoPathState }) { path ->
+                                AssistChip(
+                                    onClick = { },
+                                    label = {
+                                        Text(
+                                            path.substringAfterLast('/'),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            if (path.endsWith(".pdf", true)) Icons.Default.Description else Icons.Default.AttachFile,
+                                            contentDescription = null
+                                        )
+                                    },
+                                    trailingIcon = {
+                                        IconButton(onClick = { removeAttachment(path) }) {
+                                            Icon(Icons.Default.Close, contentDescription = "Remove attachment")
+                                        }
+                                    }
+                                )
+                            }
+                        }
                     }
+
+                    AttachmentPickerRow(
+                        category = category,
+                        photoPath = photoPathState,
+                        onPhotoSelected = { path -> path?.let(addAttachment) },
+                        onCameraClicked = { cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA) },
+                        onGalleryClicked = { galleryLauncher.launch("image/*") },
+                        onDocClicked = { documentLauncher.launch("*/*") }
+                    )
 
                     // Divider if we show both photo and voice
                     if (photoPathState != null || voiceFilePath != null) {
@@ -1445,6 +1495,7 @@ fun RememberScreen(
                             longitude = existingMemory?.longitude,
                             photoPath = if (category.lowercase() in listOf("note", "shopping", "gift idea")) photoPathState else null,
                             voicePath = voiceFilePath,
+                            attachmentPaths = attachmentPaths.joinToString("\n"),
                             isPinned = isPinned,
                             isFavorite = isFavorite,
                             trashDate = existingMemory?.trashDate
@@ -1534,6 +1585,7 @@ fun RememberScreen(
                     modifier = Modifier
                         .weight(1.5f)
                         .testTag("save_memory_button"),
+                    enabled = !isRecording,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = activeCategoryColor
                     )
@@ -1643,13 +1695,13 @@ fun copyUriToInternalStorage(context: Context, uri: Uri, fileName: String): Stri
     return try {
         val storageDir = File(context.filesDir, "attachments")
         if (!storageDir.exists()) storageDir.mkdirs()
-        val destFile = File(storageDir, fileName)
+        val destFile = File(storageDir, File(fileName).name)
         context.contentResolver.openInputStream(uri)?.use { inputStream ->
             destFile.outputStream().use { outputStream ->
                 inputStream.copyTo(outputStream)
             }
+            destFile.absolutePath
         }
-        destFile.absolutePath
     } catch (e: Exception) {
         e.printStackTrace()
         null

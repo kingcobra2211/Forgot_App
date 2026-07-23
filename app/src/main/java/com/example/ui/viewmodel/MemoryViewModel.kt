@@ -2,29 +2,25 @@ package com.example.ui.viewmodel
 
 import android.app.Application
 import android.content.Context
-import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.database.AppDatabase
 import com.example.data.model.*
 import com.example.data.repository.MemoryRepository
+import com.example.data.repository.ReminderScheduler
 import com.example.ui.utils.LanguageUtils
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import java.io.File
-import java.text.SimpleDateFormat
-import java.util.*
 
 class MemoryViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository: MemoryRepository
+    private val reminderScheduler = ReminderScheduler(application)
     private val sharedPrefs = application.getSharedPreferences("forgot_prefs", Context.MODE_PRIVATE)
 
     val activeMemories: StateFlow<List<MemoryWithDetails>>
@@ -40,7 +36,7 @@ class MemoryViewModel(application: Application) : AndroidViewModel(application) 
 
     init {
         val database = AppDatabase.getDatabase(application)
-        repository = MemoryRepository(database.memoryDao())
+        repository = MemoryRepository(database, database.memoryDao())
 
         activeMemories = repository.activeMemories.stateIn(
             scope = viewModelScope,
@@ -68,6 +64,7 @@ class MemoryViewModel(application: Application) : AndroidViewModel(application) 
 
         // Auto delete trash older than 30 days on launch
         performTrashCleanup()
+        rescheduleReminders()
     }
 
     // Reactive Search Results combining query, category filter and active memories
@@ -104,13 +101,15 @@ class MemoryViewModel(application: Application) : AndroidViewModel(application) 
 
     fun saveMemory(memory: Memory, detail: Any? = null) {
         viewModelScope.launch {
-            repository.saveMemoryWithDetails(memory, detail)
+            val savedMemory = repository.saveMemoryWithDetails(memory, detail)
+            reminderScheduler.schedule(savedMemory)
         }
     }
 
     fun updateMemory(memory: Memory) {
         viewModelScope.launch {
             repository.updateMemory(memory)
+            reminderScheduler.schedule(memory)
         }
     }
 
@@ -128,24 +127,21 @@ class MemoryViewModel(application: Application) : AndroidViewModel(application) 
 
     fun archiveMemory(memory: Memory) {
         viewModelScope.launch {
-            repository.updateMemory(
-                memory.copy(
-                    status = "Archived",
-                    isPinned = false,
-                    updatedDate = System.currentTimeMillis()
-                )
+            val archivedMemory = memory.copy(
+                status = "Archived",
+                isPinned = false,
+                updatedDate = System.currentTimeMillis()
             )
+            repository.updateMemory(archivedMemory)
+            reminderScheduler.cancel(memory.id)
         }
     }
 
     fun unarchiveMemory(memory: Memory) {
         viewModelScope.launch {
-            repository.updateMemory(
-                memory.copy(
-                    status = "Active",
-                    updatedDate = System.currentTimeMillis()
-                )
-            )
+            val restoredMemory = memory.copy(status = "Active", updatedDate = System.currentTimeMillis())
+            repository.updateMemory(restoredMemory)
+            reminderScheduler.schedule(restoredMemory)
         }
     }
 
@@ -160,29 +156,32 @@ class MemoryViewModel(application: Application) : AndroidViewModel(application) 
                     updatedDate = System.currentTimeMillis()
                 )
             )
+            reminderScheduler.cancel(memory.id)
         }
     }
 
     fun restoreMemoryFromTrash(memory: Memory) {
         viewModelScope.launch {
-            repository.updateMemory(
-                memory.copy(
-                    status = "Active",
-                    trashDate = null,
-                    updatedDate = System.currentTimeMillis()
-                )
+            val restoredMemory = memory.copy(
+                status = "Active",
+                trashDate = null,
+                updatedDate = System.currentTimeMillis()
             )
+            repository.updateMemory(restoredMemory)
+            reminderScheduler.schedule(restoredMemory)
         }
     }
 
     fun deleteMemoryPermanently(memory: Memory) {
         viewModelScope.launch {
             repository.deleteMemory(memory)
+            reminderScheduler.cancel(memory.id)
         }
     }
 
     fun emptyTrash() {
         viewModelScope.launch {
+            trashMemories.value.forEach { reminderScheduler.cancel(it.memory.id) }
             repository.emptyTrash()
         }
     }
@@ -195,13 +194,14 @@ class MemoryViewModel(application: Application) : AndroidViewModel(application) 
                 val memory = memoryWithDetails.memory
                 if (memory.trashDate != null && memory.trashDate < thirtyDaysAgo) {
                     repository.deleteMemory(memory)
+                    reminderScheduler.cancel(memory.id)
                 }
             }
         }
     }
 
     // Export memories as a local JSON string
-    fun exportBackup(context: Context): String? {
+    fun exportBackup(): String? {
         return try {
             val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
             val listType = Types.newParameterizedType(List::class.java, MemoryWithDetails::class.java)
@@ -221,7 +221,7 @@ class MemoryViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     // Import memories from a JSON string, restoring them to the database
-    fun importBackup(json: String): Boolean {
+    private suspend fun importBackup(json: String): Boolean {
         return try {
             val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
             val listType = Types.newParameterizedType(List::class.java, MemoryWithDetails::class.java)
@@ -229,24 +229,8 @@ class MemoryViewModel(application: Application) : AndroidViewModel(application) 
 
             val importedMemories = adapter.fromJson(json) ?: return false
 
-            viewModelScope.launch {
-                repository.clearAll()
-                for (memoryWithDetails in importedMemories) {
-                    val baseMemory = memoryWithDetails.memory.copy(id = 0)
-                    val detail = when (baseMemory.category.lowercase()) {
-                        "parking" -> memoryWithDetails.parkingDetail
-                        "money" -> memoryWithDetails.moneyDetail
-                        "document" -> memoryWithDetails.documentDetail
-                        "medicine" -> memoryWithDetails.medicineDetail
-                        "shopping" -> memoryWithDetails.shoppingDetail
-                        "place" -> memoryWithDetails.placeDetail
-                        "gift idea" -> memoryWithDetails.giftDetail
-                        "wishlist" -> memoryWithDetails.wishlistDetail
-                        else -> null
-                    }
-                    repository.saveMemoryWithDetails(baseMemory, detail)
-                }
-            }
+            repository.restoreBackup(importedMemories)
+            rescheduleReminders()
             true
         } catch (e: Exception) {
             e.printStackTrace()
@@ -257,7 +241,7 @@ class MemoryViewModel(application: Application) : AndroidViewModel(application) 
     // Export backup to a file using Android's Storage Access Framework (SAF)
     fun performExportBackup(uri: Uri) {
         val context = getApplication<Application>()
-        val json = exportBackup(context)
+        val json = exportBackup()
         if (json == null) {
             Toast.makeText(context, LanguageUtils.getString("export_failed", language.value), Toast.LENGTH_SHORT).show()
             return
@@ -298,7 +282,9 @@ class MemoryViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    // Unused legacy methods replaced by SAF implementation in performExportBackup/performImportBackup
-    fun exportBackupToFile(context: Context) { /* Replaced by SAF */ }
-    fun importBackupFromFile(context: Context) { /* Replaced by SAF */ }
+    private fun rescheduleReminders() {
+        viewModelScope.launch {
+            repository.activeReminders.first().forEach { reminderScheduler.schedule(it.memory) }
+        }
+    }
 }
