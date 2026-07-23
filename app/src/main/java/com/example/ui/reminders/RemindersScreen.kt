@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import com.example.data.model.MemoryWithDetails
 import com.example.ui.components.MemoryCard
 import com.example.ui.utils.LanguageUtils
+import com.example.ui.utils.LocalResponsiveMetrics
 import com.example.ui.viewmodel.MemoryViewModel
 import java.util.*
 
@@ -35,6 +36,7 @@ fun RemindersScreen(
 ) {
     val language by viewModel.language.collectAsState()
     val activeReminders by viewModel.activeReminders.collectAsState()
+    val metrics = LocalResponsiveMetrics.current
 
     // Grouping reminders
     val groupedReminders = remember(activeReminders) {
@@ -93,7 +95,7 @@ fun RemindersScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
-                    .padding(24.dp),
+                    .padding(metrics.horizontalPadding),
                 contentAlignment = Alignment.Center
             ) {
                 Card(
@@ -101,12 +103,12 @@ fun RemindersScreen(
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)
                     ),
-                    shape = RoundedCornerShape(20.dp)
+                    shape = RoundedCornerShape(metrics.cardCornerRadius)
                 ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(32.dp),
+                            .padding(horizontal = metrics.horizontalPadding, vertical = metrics.sectionSpacing),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center
                     ) {
@@ -127,14 +129,14 @@ fun RemindersScreen(
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
                             text = "No active reminders",
-                            style = MaterialTheme.typography.titleMedium,
+                            style = MaterialTheme.typography.titleMedium.copy(fontSize = metrics.titleFontSize),
                             fontWeight = FontWeight.Bold,
                             textAlign = TextAlign.Center
                         )
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
                             text = "Add reminders to your memories (like doctor meetings, money returns, or parking locations) to get notified here.",
-                            style = MaterialTheme.typography.bodyMedium,
+                            style = MaterialTheme.typography.bodyMedium.copy(fontSize = metrics.bodyFontSize),
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
                             textAlign = TextAlign.Center
                         )
@@ -156,8 +158,11 @@ fun RemindersScreen(
                     .fillMaxSize()
                     .padding(paddingValues)
                     .testTag("reminders_lazy_column"),
-                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                contentPadding = PaddingValues(
+                    horizontal = metrics.horizontalPadding,
+                    vertical = metrics.verticalPadding
+                ),
+                verticalArrangement = Arrangement.spacedBy(metrics.gridSpacing)
             ) {
                 // Overdue/Missed Section
                 if (missedReminders.isNotEmpty()) {

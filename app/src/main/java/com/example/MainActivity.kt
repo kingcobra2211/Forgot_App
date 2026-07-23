@@ -1,9 +1,14 @@
 package com.example
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -18,6 +23,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
+import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -26,6 +33,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -44,9 +52,12 @@ import com.example.ui.search.SearchScreen
 import com.example.ui.theme.ForgotTheme
 import com.example.ui.utils.CategoryRegistry
 import com.example.ui.utils.LanguageUtils
+import com.example.ui.utils.LocalResponsiveMetrics
+import com.example.ui.utils.ProvideResponsiveMetrics
 import com.example.ui.viewmodel.MemoryViewModel
 
 class MainActivity : ComponentActivity() {
+    @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -55,13 +66,16 @@ class MainActivity : ComponentActivity() {
             val updateViewModel: com.example.ui.viewmodel.UpdateViewModel = viewModel()
             val themeKey by viewModel.themeKey.collectAsState()
             val language by viewModel.language.collectAsState()
+            val windowSizeClass = calculateWindowSizeClass(this)
 
             ForgotTheme(themeKey = themeKey) {
-                MainAppCoordinator(
-                    viewModel = viewModel,
-                    updateViewModel = updateViewModel,
-                    language = language
-                )
+                ProvideResponsiveMetrics(widthSizeClass = windowSizeClass.widthSizeClass) {
+                    MainAppCoordinator(
+                        viewModel = viewModel,
+                        updateViewModel = updateViewModel,
+                        language = language
+                    )
+                }
             }
         }
     }
@@ -76,11 +90,29 @@ fun MainAppCoordinator(
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+    val metrics = LocalResponsiveMetrics.current
+    val isCompact = metrics.widthSizeClass == androidx.compose.material3.windowsizeclass.WindowWidthSizeClass.Compact
 
     var showQuickAddDialog by remember { mutableStateOf(false) }
     val isUpdateAvailable by updateViewModel.isUpdateAvailable.collectAsState()
 
-    // Dynamic frequency usage sorting for categories
+    // ... (rest of the setup logic remains same)
+    val createDocumentLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri: Uri? ->
+        if (uri != null) {
+            viewModel.performExportBackup(uri)
+        }
+    }
+
+    val openDocumentLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            viewModel.performImportBackup(uri)
+        }
+    }
+
     val activeMemories by viewModel.activeMemories.collectAsState()
     val categoryUsageCounts: Map<String, Int> = remember(activeMemories) {
         activeMemories.groupBy { it.memory.category }.mapValues { it.value.size }
@@ -89,99 +121,204 @@ fun MainAppCoordinator(
         CategoryRegistry.categories.sortedByDescending { categoryUsageCounts[it.name] ?: 0 }
     }
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        bottomBar = {
-            val isPrimaryScreen = currentRoute in listOf("home", "search", "reminders", "settings")
-            if (isPrimaryScreen) {
-                // Highly polished NavigationBar with modern heights, colors and shapes
-                NavigationBar(
-                    modifier = Modifier.testTag("app_bottom_navigation"),
-                    tonalElevation = 8.dp,
-                    containerColor = MaterialTheme.colorScheme.surface
-                ) {
-                    // 1. Home
-                    NavigationBarItem(
-                        selected = currentRoute == "home",
-                        onClick = { navController.navigate("home") { popUpTo("home") { inclusive = false } } },
-                        icon = { Icon(imageVector = Icons.Default.Home, contentDescription = "Home", modifier = Modifier.size(24.dp)) },
-                        label = { Text(LanguageUtils.getString("home_tab", language), fontWeight = FontWeight.Bold, fontSize = 11.sp) }
-                    )
-
-                    // 2. Search
-                    NavigationBarItem(
-                        selected = currentRoute == "search",
-                        onClick = { navController.navigate("search") { popUpTo("home") } },
-                        icon = { Icon(imageVector = Icons.Default.Search, contentDescription = "Search", modifier = Modifier.size(24.dp)) },
-                        label = { Text(LanguageUtils.getString("search_tab", language), fontWeight = FontWeight.Bold, fontSize = 11.sp) }
-                    )
-
-                    // 3. Central Focal Quick Add Button (Elevated Circle)
-                    NavigationBarItem(
-                        selected = false,
+    Row(modifier = Modifier.fillMaxSize()) {
+        // 1. Adaptive Navigation Rail for non-compact screens
+        if (!isCompact && currentRoute in listOf("home", "search", "reminders", "settings")) {
+            NavigationRail(
+                modifier = Modifier.fillMaxHeight(),
+                containerColor = MaterialTheme.colorScheme.surface,
+                contentColor = MaterialTheme.colorScheme.onSurface,
+                header = {
+                    FloatingActionButton(
                         onClick = { showQuickAddDialog = true },
-                        icon = {
-                            Box(
-                                modifier = Modifier
-                                    .size(46.dp)
-                                    .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.primary),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Add,
-                                    contentDescription = "Quick Add",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(26.dp)
-                                )
-                            }
-                        },
-                        label = { Text(LanguageUtils.getString("quick_add", language), fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary, fontSize = 11.sp) },
-                        modifier = Modifier.testTag("bottom_quick_add_tab")
-                    )
-
-                    // 4. Reminders
-                    NavigationBarItem(
-                        selected = currentRoute == "reminders",
-                        onClick = { navController.navigate("reminders") { popUpTo("home") } },
-                        icon = { Icon(imageVector = Icons.Default.Notifications, contentDescription = "Reminders", modifier = Modifier.size(24.dp)) },
-                        label = { Text(LanguageUtils.getString("reminders_tab", language), fontWeight = FontWeight.Bold, fontSize = 11.sp) }
-                    )
-
-                    // 5. Settings
-                    NavigationBarItem(
-                        selected = currentRoute == "settings",
-                        onClick = { navController.navigate("settings") { popUpTo("home") } },
-                        icon = { Icon(imageVector = Icons.Default.Settings, contentDescription = "Settings", modifier = Modifier.size(24.dp)) },
-                        label = { Text(LanguageUtils.getString("settings_tab", language), fontWeight = FontWeight.Bold, fontSize = 11.sp) }
-                    )
+                        elevation = FloatingActionButtonDefaults.bottomAppBarFabElevation()
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "Add")
+                    }
                 }
-            }
-        },
-        floatingActionButton = {
-            // Elevated Floating Action Button only on the dashboard
-            if (currentRoute == "home") {
-                FloatingActionButton(
-                    onClick = { showQuickAddDialog = true },
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = Color.White,
-                    modifier = Modifier
-                        .padding(bottom = 16.dp)
-                        .testTag("home_quick_add_fab"),
-                    shape = CircleShape
-                ) {
-                    Icon(imageVector = Icons.Default.Add, contentDescription = "Quick Add FAB", modifier = Modifier.size(28.dp))
-                }
+            ) {
+                Spacer(Modifier.weight(1f))
+                NavigationRailItem(
+                    selected = currentRoute == "home",
+                    onClick = { navController.navigate("home") { popUpTo("home") { inclusive = false } } },
+                    icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
+                    label = { Text(LanguageUtils.getString("home_tab", language)) }
+                )
+                NavigationRailItem(
+                    selected = currentRoute == "search",
+                    onClick = { navController.navigate("search") { popUpTo("home") } },
+                    icon = { Icon(Icons.Default.Search, contentDescription = "Search") },
+                    label = { Text(LanguageUtils.getString("search_tab", language)) }
+                )
+                NavigationRailItem(
+                    selected = currentRoute == "reminders",
+                    onClick = { navController.navigate("reminders") { popUpTo("home") } },
+                    icon = { Icon(Icons.Default.Notifications, contentDescription = "Reminders") },
+                    label = { Text(LanguageUtils.getString("reminders_tab", language)) }
+                )
+                NavigationRailItem(
+                    selected = currentRoute == "settings",
+                    onClick = { navController.navigate("settings") { popUpTo("home") } },
+                    icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
+                    label = { Text(LanguageUtils.getString("settings_tab", language)) }
+                )
+                Spacer(Modifier.weight(1f))
             }
         }
-    ) { innerPadding ->
-        NavHost(
-            navController = navController,
-            startDestination = "home",
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-        ) {
+
+        Scaffold(
+            modifier = Modifier.weight(1f),
+            bottomBar = {
+                val isPrimaryScreen = currentRoute in listOf("home", "search", "reminders", "settings")
+                if (isPrimaryScreen && isCompact) {
+                    NavigationBar(
+                        modifier = Modifier.testTag("app_bottom_navigation"),
+                        tonalElevation = 4.dp,
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                        windowInsets = NavigationBarDefaults.windowInsets
+                    ) {
+                        // Home
+                        NavigationBarItem(
+                            selected = currentRoute == "home",
+                            onClick = { navController.navigate("home") { popUpTo("home") { inclusive = false } } },
+                            icon = { Icon(imageVector = Icons.Default.Home, contentDescription = "Home") },
+                            label = {
+                                Text(
+                                    text = LanguageUtils.getString("home_tab", language),
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = metrics.labelFontSize,
+                                    letterSpacing = (-0.3).sp,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Visible,
+                                    textAlign = TextAlign.Center
+                                )
+                            },
+                            alwaysShowLabel = true
+                        )
+
+                        // Search
+                        NavigationBarItem(
+                            selected = currentRoute == "search",
+                            onClick = { navController.navigate("search") { popUpTo("home") } },
+                            icon = { Icon(imageVector = Icons.Default.Search, contentDescription = "Search") },
+                            label = {
+                                Text(
+                                    text = LanguageUtils.getString("search_tab", language),
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = metrics.labelFontSize,
+                                    letterSpacing = (-0.3).sp,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Visible,
+                                    textAlign = TextAlign.Center
+                                )
+                            },
+                            alwaysShowLabel = true
+                        )
+
+                        // Quick Add (Standardized Slot)
+                        NavigationBarItem(
+                            selected = false,
+                            onClick = { showQuickAddDialog = true },
+                            icon = {
+                                Box(
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.primary),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Add,
+                                        contentDescription = "Quick Add",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                            },
+                            label = {
+                                Text(
+                                    text = LanguageUtils.getString("quick_add", language),
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontSize = metrics.labelFontSize,
+                                    letterSpacing = (-0.3).sp,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Visible,
+                                    textAlign = TextAlign.Center
+                                )
+                            },
+                            alwaysShowLabel = true
+                        )
+
+                        // Reminders
+                        NavigationBarItem(
+                            selected = currentRoute == "reminders",
+                            onClick = { navController.navigate("reminders") { popUpTo("home") } },
+                            icon = { Icon(imageVector = Icons.Default.Notifications, contentDescription = "Reminders") },
+                            label = {
+                                Text(
+                                    text = LanguageUtils.getString("reminders_tab", language),
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = metrics.labelFontSize,
+                                    letterSpacing = (-0.3).sp,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Visible,
+                                    textAlign = TextAlign.Center
+                                )
+                            },
+                            alwaysShowLabel = true
+                        )
+
+                        // Settings
+                        NavigationBarItem(
+                            selected = currentRoute == "settings",
+                            onClick = { navController.navigate("settings") { popUpTo("home") } },
+                            icon = { Icon(imageVector = Icons.Default.Settings, contentDescription = "Settings") },
+                            label = {
+                                Text(
+                                    text = LanguageUtils.getString("settings_tab", language),
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = metrics.labelFontSize,
+                                    letterSpacing = (-0.3).sp,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Visible,
+                                    textAlign = TextAlign.Center
+                                )
+                            },
+                            alwaysShowLabel = true
+                        )
+                    }
+                }
+            },
+            floatingActionButton = {
+                if (currentRoute == "home" && isCompact) {
+                    FloatingActionButton(
+                        onClick = { showQuickAddDialog = true },
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = Color.White,
+                        modifier = Modifier
+                            .padding(bottom = 16.dp)
+                            .testTag("home_quick_add_fab"),
+                        shape = CircleShape
+                    ) {
+                        Icon(imageVector = Icons.Default.Add, contentDescription = "Quick Add FAB", modifier = Modifier.size(28.dp))
+                    }
+                }
+            }
+        ) { innerPadding ->
+            NavHost(
+                navController = navController,
+                startDestination = "home",
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+            ) {
             composable("home") {
                 HomeScreen(
                     viewModel = viewModel,
@@ -221,6 +358,12 @@ fun MainAppCoordinator(
                     onNavigateToRemember = { id, category ->
                         val route = if (id != null) "remember?memoryId=$id" else "remember?category=$category"
                         navController.navigate(route)
+                    },
+                    onExportBackup = {
+                        createDocumentLauncher.launch("forgot_backup_${System.currentTimeMillis()}.json")
+                    },
+                    onImportBackup = {
+                        openDocumentLauncher.launch(arrayOf("application/json", "*/*"))
                     }
                 )
             }
@@ -391,4 +534,5 @@ fun MainAppCoordinator(
             onDismiss = { updateViewModel.dismissUpdateDialog() }
         )
     }
+}
 }

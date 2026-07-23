@@ -48,6 +48,7 @@ import com.example.data.model.*
 import com.example.ui.utils.CategoryRegistry
 import com.example.ui.utils.CategoryItem
 import com.example.ui.utils.LanguageUtils
+import com.example.ui.utils.LocalResponsiveMetrics
 import com.example.ui.viewmodel.MemoryViewModel
 import java.io.File
 import java.text.SimpleDateFormat
@@ -64,6 +65,7 @@ fun RememberScreen(
 ) {
     val context = LocalContext.current
     val language by viewModel.language.collectAsState()
+    val metrics = LocalResponsiveMetrics.current
     
     // Determine if we are editing or adding
     val isEditing = memoryId != null && memoryId != 0
@@ -399,24 +401,27 @@ fun RememberScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
                 .verticalScroll(scrollState)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(
+                    start = metrics.horizontalPadding,
+                    end = metrics.horizontalPadding,
+                    top = metrics.verticalPadding,
+                    bottom = metrics.verticalPadding * 2
+                ),
+            verticalArrangement = Arrangement.spacedBy(metrics.gridSpacing)
         ) {
             // ==========================================
             // FLOW SECTION 1: CATEGORY SELECTOR
             // ==========================================
             Text(
                 text = "What do you want to remember?",
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleMedium.copy(fontSize = metrics.titleFontSize),
                 fontWeight = FontWeight.Black,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(horizontal = 4.dp)
+                color = MaterialTheme.colorScheme.onSurface
             )
             
             LazyRow(
                 modifier = Modifier.fillMaxWidth(),
-                contentPadding = PaddingValues(horizontal = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(metrics.itemSpacing)
             ) {
                 items(CategoryRegistry.categories) { catItem ->
                     val selected = category.lowercase() == catItem.name.lowercase()

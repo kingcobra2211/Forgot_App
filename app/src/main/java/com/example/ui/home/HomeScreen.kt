@@ -7,12 +7,14 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.*
+import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -28,6 +30,7 @@ import com.example.data.model.MemoryWithDetails
 import com.example.ui.components.MemoryCard
 import com.example.ui.utils.CategoryRegistry
 import com.example.ui.utils.LanguageUtils
+import com.example.ui.utils.LocalResponsiveMetrics
 import com.example.ui.viewmodel.MemoryViewModel
 import java.text.SimpleDateFormat
 import java.util.*
@@ -43,6 +46,8 @@ fun HomeScreen(
     val activeMemories by viewModel.activeMemories.collectAsState()
     val reminders by viewModel.activeReminders.collectAsState()
     val selectedCategory by viewModel.selectedCategory.collectAsState()
+    val metrics = LocalResponsiveMetrics.current
+    val isCompact = metrics.widthSizeClass == WindowWidthSizeClass.Compact
 
     // Calculate dynamically sorted categories based on frequency of usage
     val categoryUsageCounts = remember(activeMemories) {
@@ -101,7 +106,7 @@ fun HomeScreen(
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
                             .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
-                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                            .padding(horizontal = metrics.horizontalPadding / 2, vertical = 6.dp)
                     ) {
                         Text(
                             text = "v1.0 Pro",
@@ -114,54 +119,63 @@ fun HomeScreen(
             }
         }
     ) { paddingValues ->
-        LazyColumn(
+        val columns = if (isCompact) GridCells.Fixed(1) else GridCells.Adaptive(minSize = 340.dp)
+        
+        LazyVerticalGrid(
+            columns = columns,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .testTag("home_screen_lazy_column"),
-            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
+                .testTag("home_screen_grid"),
+            contentPadding = PaddingValues(
+                start = metrics.horizontalPadding,
+                end = metrics.horizontalPadding,
+                top = metrics.verticalPadding,
+                bottom = metrics.verticalPadding * 2
+            ),
+            horizontalArrangement = Arrangement.spacedBy(metrics.gridSpacing),
+            verticalArrangement = Arrangement.spacedBy(metrics.sectionSpacing)
         ) {
             // Header: Dynamic memory focus prompt
-            item {
+            item(span = { GridItemSpan(maxLineSpan) }) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 4.dp, bottom = 4.dp)
+                        .padding(vertical = 8.dp)
                 ) {
                     Text(
                         text = "Save before you forget.",
                         style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Black,
+                        fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
+                    Spacer(modifier = Modifier.height(6.dp))
                     Text(
                         text = "What would you like to remember today?",
                         style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Normal,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
 
-            // 1. PRIORITIZED SECTION: Search Memories Bar
-            item {
+            item(span = { GridItemSpan(maxLineSpan) }) {
                 Card(
                     onClick = onNavigateToSearch,
                     modifier = Modifier
                         .fillMaxWidth()
+                        .heightIn(min = metrics.searchBarHeight)
                         .testTag("home_search_bar_trigger"),
                     colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.12f)
                     ),
-                    shape = RoundedCornerShape(16.dp),
-                    border = CardDefaults.outlinedCardBorder().copy(
-                        brush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.outline.copy(alpha = 0.08f))
-                    )
+                    shape = RoundedCornerShape(metrics.cardCornerRadius),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                 ) {
                     Row(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                            .fillMaxSize()
+                            .padding(horizontal = 16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
@@ -172,26 +186,27 @@ fun HomeScreen(
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Text(
-                            text = "Search Memories...",
+                            text = LanguageUtils.getString("search_hint", language),
                             style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            fontWeight = FontWeight.Normal,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
                     }
                 }
             }
 
             // 2. PRIORITIZED SECTION: Quick Capture (sorted by frequency of use)
-            item {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(
                         text = "Quick Capture",
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Black,
+                        fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
 
                     LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         items(sortedCategories) { catItem ->
@@ -203,16 +218,23 @@ fun HomeScreen(
                                 colors = CardDefaults.cardColors(
                                     containerColor = catItem.color.copy(alpha = 0.1f)
                                 ),
-                                shape = RoundedCornerShape(14.dp),
-                                modifier = Modifier.testTag("quick_capture_${catItem.name.lowercase()}")
+                                shape = RoundedCornerShape(12.dp),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                                modifier = Modifier
+                                    .testTag("quick_capture_${catItem.name.lowercase()}")
+                                    .widthIn(min = 130.dp, max = 180.dp)
+                                    .aspectRatio(1.2f)
                             ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(14.dp),
+                                    verticalArrangement = Arrangement.Center,
+                                    horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
                                     Box(
                                         modifier = Modifier
-                                            .size(28.dp)
+                                            .size(32.dp)
                                             .clip(CircleShape)
                                             .background(catItem.color.copy(alpha = 0.2f)),
                                         contentAlignment = Alignment.Center
@@ -221,25 +243,26 @@ fun HomeScreen(
                                             imageVector = catItem.icon,
                                             contentDescription = catItem.name,
                                             tint = catItem.color,
-                                            modifier = Modifier.size(16.dp)
+                                            modifier = Modifier.size(18.dp)
                                         )
                                     }
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Column {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = LanguageUtils.getString(catItem.name, language),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    if (count > 0) {
+                                        Spacer(modifier = Modifier.height(4.dp))
                                         Text(
-                                            text = LanguageUtils.getString(catItem.name, language),
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onSurface
+                                            text = "$count saved",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Medium,
+                                            color = catItem.color
                                         )
-                                        if (count > 0) {
-                                            Text(
-                                                text = "$count saved",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = catItem.color,
-                                                fontWeight = FontWeight.Black
-                                            )
-                                        }
                                     }
                                 }
                             }
@@ -249,7 +272,7 @@ fun HomeScreen(
             }
 
             // 3. PRIORITIZED SECTION: Upcoming Reminders
-            item {
+            item(span = { GridItemSpan(maxLineSpan) }) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -330,7 +353,7 @@ fun HomeScreen(
                                 Card(
                                     onClick = { onNavigateToRemember(memory.id, null) },
                                     modifier = Modifier
-                                        .width(200.dp)
+                                        .widthIn(min = 190.dp, max = 260.dp)
                                         .testTag("upcoming_reminder_card_${memory.id}"),
                                     colors = CardDefaults.cardColors(
                                         containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
@@ -402,7 +425,7 @@ fun HomeScreen(
 
             // 4. PRIORITIZED SECTION: Pinned Memories
             if (pinnedMemories.isNotEmpty()) {
-                item {
+                item(span = { GridItemSpan(maxLineSpan) }) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
@@ -445,7 +468,7 @@ fun HomeScreen(
             }
 
             // 5. PRIORITIZED SECTION: Recent Memories
-            item {
+            item(span = { GridItemSpan(maxLineSpan) }) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
                         text = if (selectedCategory != null) "Filtered Memories" else "Recent Memories",
@@ -485,7 +508,7 @@ fun HomeScreen(
             }
 
             if (filteredUnpinned.isEmpty()) {
-                item {
+                item(span = { GridItemSpan(maxLineSpan) }) {
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()

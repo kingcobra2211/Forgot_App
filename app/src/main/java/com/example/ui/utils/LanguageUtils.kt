@@ -39,11 +39,10 @@ object LanguageUtils {
         "settings_tab" to "Settings",
         "theme" to "Theme",
         "language" to "Language",
-        "export_backup" to "Export Backup (JSON)",
-        "import_backup" to "Import Backup (JSON)",
+        "export_backup" to "Export",
+        "import_backup" to "Import",
         "backup_restored" to "Backup restored successfully!",
         "backup_failed" to "Backup operation failed.",
-        "copied_clipboard" to "Backup JSON copied to clipboard!",
         "about" to "About",
         "about_desc" to "Forgot is a fast personal memory system. It helps you save anything under 5 seconds and retrieve it instantly under 2 seconds.",
         "completed" to "Completed",
@@ -73,7 +72,11 @@ object LanguageUtils {
         "trash_title" to "Trash (30 Days Auto-Delete)",
         "total_memories" to "Total Memories",
         "completed_today" to "Completed Today",
-        "pending_items" to "Pending Reminders"
+        "pending_items" to "Pending Reminders",
+        "export_success" to "Backup exported successfully to: ",
+        "export_failed" to "Failed to export backup",
+        "import_success" to "Backup imported successfully!",
+        "import_failed" to "Failed to import backup"
     )
 
     private val teluguMap = mapOf(
@@ -114,11 +117,10 @@ object LanguageUtils {
         "settings_tab" to "సెట్టింగ్స్",
         "theme" to "థీమ్ (Theme)",
         "language" to "భాష (Language)",
-        "export_backup" to "బ్యాకప్ ఎగుమతి (JSON)",
-        "import_backup" to "బ్యాకప్ దిగుమతి (JSON)",
+        "export_backup" to "ఎగుమతి",
+        "import_backup" to "దిగుమతి",
         "backup_restored" to "బ్యాకప్ విజయవంతంగా పునరుద్ధరించబడింది!",
         "backup_failed" to "బ్యాకప్ విఫలమైంది.",
-        "copied_clipboard" to "బ్యాకప్ JSON క్లిప్‌బోర్డ్‌కి కాపీ చేయబడింది!",
         "about" to "గురించి (About)",
         "about_desc" to "Forgot అనేది వేగవంతమైన వ్యక్తిగత జ్ఞాపకశక్తి సహాయక యాప్. ఇది మీ జ్ఞాపకాలను కేవలం 5 సెకన్లలో భద్రపరిచి, తిరిగి 2 సెకన్లలో గుర్తిస్తుంది.",
         "completed" to "పూర్తయినది",
@@ -147,7 +149,11 @@ object LanguageUtils {
         "trash_title" to "చెత్తబుట్ట (30 రోజుల్లో తొలగింపు)",
         "total_memories" to "మొత్తం జ్ఞాపకాలు",
         "completed_today" to "ఈ రోజు పూర్తయినవి",
-        "pending_items" to "రాబోయేవి"
+        "pending_items" to "రాబోయేవి",
+        "export_success" to "బ్యాకప్ విజయవంతంగా ఎగుమతి చేయబడింది: ",
+        "export_failed" to "బ్యాకప్ ఎగుమతి విఫలమైంది",
+        "import_success" to "బ్యాకప్ విజయవంతంగా దిగుమతి చేయబడింది!",
+        "import_failed" to "బ్యాకప్ దిగుమతి విఫలమైంది"
     )
 
     fun getString(key: String, language: String): String {

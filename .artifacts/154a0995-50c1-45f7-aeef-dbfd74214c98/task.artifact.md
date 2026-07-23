@@ -1,0 +1,8 @@
+- [x] Global UI Audit & Responsive Polish
+    - [x] Standardize `AdaptiveUI.kt` metrics
+    - [x] Fix `MainActivity.kt` Bottom Navigation & Insets
+    - [x] Audit `HomeScreen.kt` (Search Bar, Spacing, Quick Capture)
+    - [x] Audit `SettingsScreen.kt` (Adaptive Grids, Spacing)
+    - [x] Audit `SearchScreen.kt` & `RemindersScreen.kt`
+    - [x] Audit `MemoryCard.kt` & other components
+- [x] Verify build and visual alignment across all devices

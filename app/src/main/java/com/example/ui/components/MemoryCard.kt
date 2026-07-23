@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.sp
 import com.example.data.model.MemoryWithDetails
 import com.example.ui.utils.CategoryRegistry
 import com.example.ui.utils.LanguageUtils
+import com.example.ui.utils.LocalResponsiveMetrics
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
@@ -45,6 +46,7 @@ fun MemoryCard(
     val memory = memoryWithDetails.memory
     val categoryItem = CategoryRegistry.getCategoryItem(memory.category)
     val accentColor = categoryItem.color
+    val metrics = LocalResponsiveMetrics.current
     
     // Parse checklist
     val checklistItems = remember(memoryWithDetails.shoppingDetail?.shoppingItems) {
@@ -73,12 +75,12 @@ fun MemoryCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp)
+            .padding(vertical = metrics.verticalPadding / 3)
             .testTag("memory_card_${memory.id}"),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)
         ),
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(metrics.cardCornerRadius),
         border = CardDefaults.outlinedCardBorder().copy(
             brush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.outline.copy(alpha = 0.12f))
         )
@@ -119,7 +121,7 @@ fun MemoryCard(
                     ) {
                         Text(
                             text = memory.title,
-                            style = MaterialTheme.typography.titleMedium,
+                            style = MaterialTheme.typography.titleMedium.copy(fontSize = metrics.titleFontSize),
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -134,7 +136,7 @@ fun MemoryCard(
                     ) {
                         Text(
                             text = LanguageUtils.getString(memory.category, language).uppercase(),
-                            style = MaterialTheme.typography.labelSmall,
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = metrics.labelFontSize),
                             fontWeight = FontWeight.Black,
                             color = accentColor,
                             letterSpacing = 0.5.sp
@@ -155,10 +157,9 @@ fun MemoryCard(
                             ) {
                                 Text(
                                     text = LanguageUtils.getString("priority_${memory.priority.lowercase()}", language).uppercase(),
-                                    style = MaterialTheme.typography.labelSmall,
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = metrics.labelFontSize),
                                     fontWeight = FontWeight.Bold,
-                                    color = priorityColor,
-                                    fontSize = 9.sp
+                                    color = priorityColor
                                 )
                             }
                         }
@@ -202,7 +203,7 @@ fun MemoryCard(
             if (memory.description.isNotEmpty()) {
                 Text(
                     text = memory.description,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = metrics.bodyFontSize),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis,
@@ -234,7 +235,7 @@ fun MemoryCard(
                             }
                             Text(
                                 text = "₹${memoryWithDetails.amount ?: 0.0}",
-                                style = MaterialTheme.typography.titleLarge,
+                                style = MaterialTheme.typography.headlineSmall,
                                 fontWeight = FontWeight.Black,
                                 color = if (memoryWithDetails.isPaid) MaterialTheme.colorScheme.primary else Color(0xFFE53935)
                             )

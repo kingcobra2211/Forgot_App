@@ -28,6 +28,7 @@ import com.example.data.model.MemoryWithDetails
 import com.example.ui.components.MemoryCard
 import com.example.ui.utils.CategoryRegistry
 import com.example.ui.utils.LanguageUtils
+import com.example.ui.utils.LocalResponsiveMetrics
 import com.example.ui.viewmodel.MemoryViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -40,6 +41,7 @@ fun SearchScreen(
     val searchQuery by viewModel.searchQuery.collectAsState()
     val selectedCategory by viewModel.selectedCategory.collectAsState()
     val searchResults by viewModel.searchResults.collectAsState()
+    val metrics = LocalResponsiveMetrics.current
 
     Scaffold(
         topBar = {
@@ -47,8 +49,8 @@ fun SearchScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(MaterialTheme.colorScheme.background)
-                    .padding(horizontal = 20.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                    .padding(horizontal = metrics.horizontalPadding, vertical = metrics.verticalPadding),
+                verticalArrangement = Arrangement.spacedBy(metrics.itemSpacing)
             ) {
                 Text(
                     text = LanguageUtils.getString("search_tab", language),
@@ -69,6 +71,7 @@ fun SearchScreen(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
+                        .heightIn(min = metrics.searchBarHeight)
                         .testTag("search_query_input"),
                     leadingIcon = {
                         Icon(
@@ -89,18 +92,18 @@ fun SearchScreen(
                         }
                     },
                     singleLine = true,
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(metrics.cardCornerRadius),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = MaterialTheme.colorScheme.primary,
                         unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.24f),
-                        focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f),
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.12f),
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.12f)
                     )
                 )
 
                 // Horizontal Category Filter Pills with smooth styling
                 LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(metrics.itemSpacing / 1.5f),
                     modifier = Modifier.fillMaxWidth(),
                     contentPadding = PaddingValues(vertical = 4.dp)
                 ) {
@@ -144,14 +147,18 @@ fun SearchScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
                 .testTag("search_results_lazy_column"),
-            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp)
+            contentPadding = PaddingValues(
+                horizontal = metrics.horizontalPadding,
+                vertical = metrics.verticalPadding
+            ),
+            verticalArrangement = Arrangement.spacedBy(metrics.gridSpacing)
         ) {
             // Results Info Row
             item {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 12.dp, top = 4.dp),
+                        .padding(bottom = 4.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {

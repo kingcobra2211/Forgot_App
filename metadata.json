@@ -1,6 +1,5 @@
 {
   "name": "Forgot",
   "description": "Save it once. Forget nothing. A memory assistant to quickly capture daily things like notes, parking, money tracker, documents, shopping, and medicine.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "requestFramePermissions": []
 }

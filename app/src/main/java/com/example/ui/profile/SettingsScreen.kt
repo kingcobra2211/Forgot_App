@@ -1,7 +1,5 @@
 package com.example.ui.profile
 
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
@@ -25,6 +23,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.text.SimpleDateFormat
@@ -34,6 +33,7 @@ import com.example.data.model.MemoryWithDetails
 import com.example.ui.components.MemoryCard
 import com.example.ui.utils.CategoryRegistry
 import com.example.ui.utils.LanguageUtils
+import com.example.ui.utils.LocalResponsiveMetrics
 import com.example.ui.viewmodel.MemoryViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -41,9 +41,10 @@ import com.example.ui.viewmodel.MemoryViewModel
 fun SettingsScreen(
     viewModel: MemoryViewModel,
     updateViewModel: com.example.ui.viewmodel.UpdateViewModel,
-    onNavigateToRemember: (memoryId: Int?, category: String?) -> Unit
+    onNavigateToRemember: (memoryId: Int?, category: String?) -> Unit,
+    onExportBackup: () -> Unit,
+    onImportBackup: () -> Unit
 ) {
-    val context = LocalContext.current
     val language by viewModel.language.collectAsState()
     val themeKey by viewModel.themeKey.collectAsState()
     
@@ -60,18 +61,13 @@ fun SettingsScreen(
 
     var showArchive by remember { mutableStateOf(false) }
     var showTrash by remember { mutableStateOf(false) }
-    var importText by remember { mutableStateOf("") }
-    var showImportDialog by remember { mutableStateOf(false) }
 
     var showPrivacyDialog by remember { mutableStateOf(false) }
     var showLicensesDialog by remember { mutableStateOf(false) }
     var showReleaseNotesDialog by remember { mutableStateOf(false) }
 
     val scrollState = rememberScrollState()
-
-    val clipboardManager = remember {
-        context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-    }
+    val metrics = LocalResponsiveMetrics.current
 
     Scaffold(
         topBar = {
@@ -79,8 +75,8 @@ fun SettingsScreen(
                 title = {
                     Text(
                         text = LanguageUtils.getString("settings_tab", language),
-                        fontWeight = FontWeight.Black,
-                        style = MaterialTheme.typography.titleLarge
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.headlineSmall
                     )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -94,22 +90,25 @@ fun SettingsScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
                 .verticalScroll(scrollState)
-                .padding(start = 20.dp, end = 20.dp, bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp)
+                .padding(
+                    start = metrics.horizontalPadding,
+                    end = metrics.horizontalPadding,
+                    top = metrics.verticalPadding,
+                    bottom = metrics.verticalPadding * 2
+                ),
+            verticalArrangement = Arrangement.spacedBy(metrics.sectionSpacing)
         ) {
             
             // 1. STATS OVERVIEW CARD
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.08f)
                 ),
-                shape = RoundedCornerShape(20.dp),
-                border = CardDefaults.outlinedCardBorder().copy(
-                    brush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.outline.copy(alpha = 0.08f))
-                )
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
-                Column(modifier = Modifier.padding(18.dp)) {
+                Column(modifier = Modifier.padding(20.dp)) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -123,7 +122,7 @@ fun SettingsScreen(
                         Text(
                             text = "Memory Statistics",
                             style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Black,
+                            fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.primary
                         )
                     }
@@ -148,9 +147,11 @@ fun SettingsScreen(
                         }
                     }
                     
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.05f), thickness = 1.dp)
+                    Spacer(modifier = Modifier.height(14.dp))
                     
-                    Text("Category Usage", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Black)
+                    Text("Category Usage", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
                     Spacer(modifier = Modifier.height(8.dp))
                     
                     CategoryRegistry.categories.forEach { catItem ->
@@ -181,7 +182,7 @@ fun SettingsScreen(
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(LanguageUtils.getString(catItem.name, language), style = MaterialTheme.typography.bodyMedium)
                                 }
-                                Text("$count items", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                                Text("$count items", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                             }
                         }
                     }
@@ -208,14 +209,16 @@ fun SettingsScreen(
                     Triple("purple", "Neon Velvet", Color(0xFF12001F))
                 )
 
-                // Layout in an elegant Grid
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    for (i in themesList.indices step 2) {
+                // Layout in an elegant Adaptive Grid
+                val columns = if (metrics.widthSizeClass == androidx.compose.material3.windowsizeclass.WindowWidthSizeClass.Compact) 2 else 3
+                
+                Column(verticalArrangement = Arrangement.spacedBy(metrics.itemSpacing)) {
+                    for (i in themesList.indices step columns) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(metrics.itemSpacing)
                         ) {
-                            for (j in 0..1) {
+                            for (j in 0 until columns) {
                                 if (i + j < themesList.size) {
                                     val (key, label, previewBg) = themesList[i + j]
                                     val selected = themeKey.lowercase() == key.lowercase()
@@ -223,12 +226,12 @@ fun SettingsScreen(
                                     Box(
                                         modifier = Modifier
                                             .weight(1f)
-                                            .clip(RoundedCornerShape(14.dp))
+                                            .clip(RoundedCornerShape(metrics.cardCornerRadius))
                                             .background(previewBg)
                                             .border(
                                                 width = if (selected) 2.dp else 1.dp,
                                                 color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.12f),
-                                                shape = RoundedCornerShape(14.dp)
+                                                shape = RoundedCornerShape(metrics.cardCornerRadius)
                                             )
                                             .clickable { viewModel.updateTheme(key) }
                                             .padding(horizontal = 14.dp, vertical = 14.dp)
@@ -238,7 +241,7 @@ fun SettingsScreen(
                                             verticalAlignment = Alignment.CenterVertically,
                                             horizontalArrangement = Arrangement.SpaceBetween
                                         ) {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                                                 // Dynamic Dot Indicator
                                                 Box(
                                                     modifier = Modifier
@@ -258,9 +261,11 @@ fun SettingsScreen(
                                                 Spacer(modifier = Modifier.width(8.dp))
                                                 Text(
                                                     text = label, 
-                                                    style = MaterialTheme.typography.bodyMedium, 
+                                                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = metrics.labelFontSize), 
                                                     fontWeight = FontWeight.Bold,
-                                                    color = if (key == "light") Color.Black else Color.White
+                                                    color = if (key == "light") Color.Black else Color.White,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
                                                 )
                                             }
                                             if (selected) {
@@ -273,6 +278,8 @@ fun SettingsScreen(
                                             }
                                         }
                                     }
+                                } else {
+                                    Spacer(modifier = Modifier.weight(1f))
                                 }
                             }
                         }
@@ -281,7 +288,7 @@ fun SettingsScreen(
             }
 
             // 3. LANGUAGE SELECTOR SECTION
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(metrics.itemSpacing)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Icon(imageVector = Icons.Default.Language, contentDescription = "Languages", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                     Text(
@@ -293,7 +300,7 @@ fun SettingsScreen(
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(metrics.itemSpacing)
                 ) {
                     val isEnglish = language.lowercase() == "english"
                     val isTelugu = language.lowercase() == "telugu"
@@ -302,7 +309,7 @@ fun SettingsScreen(
                     Card(
                         onClick = { viewModel.updateLanguage("english") },
                         modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(metrics.cardCornerRadius / 1.25f),
                         colors = CardDefaults.cardColors(
                             containerColor = if (isEnglish) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
                         ),
@@ -313,13 +320,13 @@ fun SettingsScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(12.dp),
+                                .padding(metrics.itemSpacing),
                             horizontalArrangement = Arrangement.Center,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
                                 text = "English 🇺🇸",
-                                style = MaterialTheme.typography.bodyMedium,
+                                style = MaterialTheme.typography.bodyMedium.copy(fontSize = metrics.bodyFontSize),
                                 fontWeight = FontWeight.Bold,
                                 color = if (isEnglish) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -330,7 +337,7 @@ fun SettingsScreen(
                     Card(
                         onClick = { viewModel.updateLanguage("telugu") },
                         modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(metrics.cardCornerRadius / 1.25f),
                         colors = CardDefaults.cardColors(
                             containerColor = if (isTelugu) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
                         ),
@@ -341,13 +348,13 @@ fun SettingsScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(12.dp),
+                                .padding(metrics.itemSpacing),
                             horizontalArrangement = Arrangement.Center,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
                                 text = "తెలుగు 🇮🇳",
-                                style = MaterialTheme.typography.bodyMedium,
+                                style = MaterialTheme.typography.bodyMedium.copy(fontSize = metrics.bodyFontSize),
                                 fontWeight = FontWeight.Bold,
                                 color = if (isTelugu) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -356,71 +363,60 @@ fun SettingsScreen(
                 }
             }
 
-            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.12f))
-
             // 4. BACKUP & RESTORE SECTION
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(metrics.itemSpacing)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Icon(imageVector = Icons.Default.CloudSync, contentDescription = "Sync", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                     Text(
                         text = "Backup & Local Sync",
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Black
+                        fontWeight = FontWeight.SemiBold
                     )
                 }
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(metrics.itemSpacing)
                 ) {
                     // Export
                     OutlinedButton(
-                        onClick = {
-                            val backupJson = viewModel.exportBackup(context)
-                            if (backupJson != null) {
-                                val clip = ClipData.newPlainText("forgot_backup", backupJson)
-                                clipboardManager.setPrimaryClip(clip)
-                                Toast.makeText(context, LanguageUtils.getString("copied_clipboard", language), Toast.LENGTH_LONG).show()
-                            } else {
-                                Toast.makeText(context, LanguageUtils.getString("backup_failed", language), Toast.LENGTH_SHORT).show()
-                            }
-                        },
+                        onClick = onExportBackup,
                         modifier = Modifier
                             .weight(1f)
+                            .heightIn(min = 48.dp)
                             .testTag("export_backup_button"),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(metrics.cardCornerRadius / 1.25f)
                     ) {
-                        Icon(imageVector = Icons.Default.ContentCopy, contentDescription = "Copy", modifier = Modifier.size(16.dp))
+                        Icon(imageVector = Icons.Default.Save, contentDescription = "Export", modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = LanguageUtils.getString("export_backup", language),
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Bold
+                            style = MaterialTheme.typography.bodyMedium.copy(fontSize = metrics.bodyFontSize),
+                            fontWeight = FontWeight.SemiBold
                         )
                     }
 
                     // Import
                     Button(
-                        onClick = { showImportDialog = true },
+                        onClick = onImportBackup,
                         modifier = Modifier
                             .weight(1f)
+                            .heightIn(min = 48.dp)
                             .testTag("import_backup_button"),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(metrics.cardCornerRadius / 1.25f)
                     ) {
-                        Icon(imageVector = Icons.Default.CloudDownload, contentDescription = "Import", modifier = Modifier.size(16.dp))
+                        Icon(imageVector = Icons.Default.Folder, contentDescription = "Import", modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = LanguageUtils.getString("import_backup", language),
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Bold
+                            style = MaterialTheme.typography.bodyMedium.copy(fontSize = metrics.bodyFontSize),
+                            fontWeight = FontWeight.SemiBold
                         )
                     }
                 }
             }
 
-            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.12f))
-
-            // 5. SHARE APP CARD
+            // 5. SHARE APP CARD (NOW SHARES APK + TEXT)
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -432,15 +428,8 @@ fun SettingsScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable {
-                            val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                                type = "text/plain"
-                                putExtra(android.content.Intent.EXTRA_SUBJECT, "Forgot - Save it once. Forget nothing.")
-                                putExtra(
-                                    android.content.Intent.EXTRA_TEXT,
-                                    "Hey! Try out Forgot - a super-fast personal memory assistant. Save anything in under 5 seconds and retrieve it instantly. Download here: https://ai.studio/build"
-                                )
-                            }
-                            context.startActivity(android.content.Intent.createChooser(shareIntent, "Share Forgot App via"))
+                            // Share both APK and text for maximum flexibility
+                            updateViewModel.shareApp()
                         }
                         .padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -468,10 +457,10 @@ fun SettingsScreen(
                             Text(
                                 text = "Share Forgot App",
                                 style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Black
+                                fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "Help friends never forget anything!",
+                                text = "Send the app to friends",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -828,30 +817,28 @@ fun SettingsScreen(
 
                         HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.08f))
 
-                        // Actions List: Share APK, Release Notes, Privacy Policy, Licenses
+                        // Actions List: Release Notes, Privacy Policy, Licenses
                         Column(
                             modifier = Modifier.fillMaxWidth(),
                             verticalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
-                            // 1. Share App APK
-                            AboutListItem(
-                                icon = Icons.Default.Share,
-                                title = "Share Forgot Binary (.apk)",
-                                subtitle = "Transfer the actual app file directly to friends",
-                                onClick = { updateViewModel.shareApp() }
-                            )
-
-                            // 2. View Release Notes
+                            // 1. View Release Notes with Update Badge
+                            val hasUpdate = latestReleaseInfo != null && 
+                                latestReleaseInfo?.tagName?.let { tag ->
+                                    !tag.equals(updateViewModel.currentVersion, ignoreCase = true)
+                                } ?: false
+                             
                             AboutListItem(
                                 icon = Icons.Default.Feed,
-                                title = "View Latest Release Notes",
-                                subtitle = "Read changelog for this build on GitHub",
+                                title = "See What's New",
+                                subtitle = "Latest features and improvements",
                                 onClick = {
                                     if (latestReleaseInfo == null) {
                                         updateViewModel.checkForUpdates(isAutoCheck = true)
                                     }
                                     showReleaseNotesDialog = true
-                                }
+                                },
+                                showBadge = hasUpdate
                             )
 
                             // 3. Privacy Policy
@@ -876,72 +863,6 @@ fun SettingsScreen(
         }
     }
 
-    // JSON Backup Dialog
-    if (showImportDialog) {
-        AlertDialog(
-            onDismissRequest = { showImportDialog = false },
-            title = { Text("Restore Backup") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Paste the copied Forgot backup JSON below to restore all your saved memories.")
-                    OutlinedTextField(
-                        value = importText,
-                        onValueChange = { importText = it },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(140.dp)
-                            .testTag("backup_import_textarea"),
-                        placeholder = { Text("[ {\"title\": \"Passport\", ...} ]") },
-                        maxLines = 10,
-                        shape = RoundedCornerShape(12.dp)
-                    )
-                    
-                    Button(
-                        onClick = {
-                            val clipData = clipboardManager.primaryClip
-                            if (clipData != null && clipData.itemCount > 0) {
-                                importText = clipData.getItemAt(0).text.toString()
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Icon(imageVector = Icons.Default.ContentPaste, contentDescription = "Paste", tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Paste from Clipboard", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        if (importText.trim().isNotEmpty()) {
-                            val success = viewModel.importBackup(importText.trim())
-                            if (success) {
-                                Toast.makeText(context, LanguageUtils.getString("backup_restored", language), Toast.LENGTH_LONG).show()
-                                showImportDialog = false
-                                importText = ""
-                            } else {
-                                Toast.makeText(context, "Invalid Backup Format.", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                    modifier = Modifier.testTag("confirm_import_backup_button"),
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Text("Restore Now", fontWeight = FontWeight.Bold, color = Color.White)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showImportDialog = false }) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
-
     // Privacy Policy Dialog
     if (showPrivacyDialog) {
         AlertDialog(
@@ -961,7 +882,7 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.bodySmall
                     )
                     Text(
-                        text = "• Zero Cloud Uploads: Your data never leaves your device.\n• No Analytics or Trackers: We collect absolutely no usage logs, telemetry, or identifiers.\n• Local Databases: Employs standard local SQLite encrypted by Android system permissions.\n• Backups: Local JSON exports copy to your secure system clipboard and are managed entirely by you.",
+                        text = "• Zero Cloud Uploads: Your data never leaves your device.\n• No Analytics or Trackers: We collect absolutely no usage logs, telemetry, or identifiers.\n• Local Databases: Employs standard local SQLite encrypted by Android system permissions.\n• Backups: Local JSON exports are stored in your chosen location via secure system file picker and managed entirely by you.",
                         style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.Medium
                     )
@@ -1032,7 +953,7 @@ fun SettingsScreen(
     if (showReleaseNotesDialog) {
         AlertDialog(
             onDismissRequest = { showReleaseNotesDialog = false },
-            title = { Text("Release Notes", fontWeight = FontWeight.Black) },
+            title = { Text("What's New", fontWeight = FontWeight.Bold) },
             text = {
                 val release = latestReleaseInfo
                 Column(
@@ -1050,12 +971,12 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.primary
                         )
                         Text(
-                            text = release.body ?: "No detailed release notes available.",
+                            text = release.body ?: "No release notes available.",
                             style = MaterialTheme.typography.bodySmall
                         )
                     } else {
                         Text(
-                            text = "No release notes cached yet. Click 'Check Now' on the Updates panel to fetch info from GitHub.",
+                            text = "Click 'Check Now' on the Updates panel to see the latest release information.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -1076,14 +997,16 @@ fun AboutListItem(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     title: String,
     subtitle: String,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    showBadge: Boolean = false
 ) {
+    val metrics = LocalResponsiveMetrics.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(metrics.cardCornerRadius / 2))
             .clickable(onClick = onClick)
-            .padding(vertical = 10.dp, horizontal = 6.dp),
+            .padding(vertical = metrics.itemSpacing / 1.5f, horizontal = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
@@ -1092,12 +1015,23 @@ fun AboutListItem(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = title,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(20.dp)
-            )
+            Box {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = title,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+                if (showBadge) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFEF5350))
+                            .align(Alignment.TopEnd)
+                    )
+                }
+            }
             Column {
                 Text(
                     text = title,
@@ -1123,14 +1057,16 @@ fun AboutListItem(
 
 @Composable
 fun LicenseItem(library: String, author: String, license: String) {
+    val metrics = LocalResponsiveMetrics.current
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(metrics.cardCornerRadius / 2))
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f))
-            .padding(10.dp)
+            .padding(metrics.itemSpacing),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        Text(text = library, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+        Text(text = library, style = MaterialTheme.typography.bodyMedium.copy(fontSize = metrics.bodyFontSize), fontWeight = FontWeight.Bold)
         Text(text = "Copyright © $author", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(text = "Licensed under $license", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.primary)
     }

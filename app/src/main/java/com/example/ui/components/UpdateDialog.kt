@@ -22,6 +22,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.data.model.ReleaseInfo
 import com.example.data.repository.DownloadState
+import com.example.ui.utils.LocalResponsiveMetrics
 import com.example.ui.viewmodel.UpdateViewModel
 import java.text.SimpleDateFormat
 import java.util.*
@@ -34,6 +35,7 @@ fun UpdateDialog(
 ) {
     val latestRelease by viewModel.latestReleaseInfo.collectAsState()
     val downloadState by viewModel.downloadState.collectAsState()
+    val metrics = LocalResponsiveMetrics.current
     
     val release = latestRelease ?: return
     val apkAsset = remember(release) {
@@ -55,16 +57,16 @@ fun UpdateDialog(
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(4.dp),
-            shape = RoundedCornerShape(24.dp),
+                .padding(metrics.horizontalPadding / 2),
+            shape = RoundedCornerShape(metrics.cardCornerRadius + 4.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                    .padding(metrics.horizontalPadding),
+                verticalArrangement = Arrangement.spacedBy(metrics.itemSpacing)
             ) {
                 // Header with App Name and Update Title
                 Row(

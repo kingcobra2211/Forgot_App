@@ -1,0 +1,4 @@
+- `[x]` Update `LanguageUtils.kt` (Remove "(JSON)" suffix)
+- `[x]` Update `MainActivity.kt` (Bottom Navigation UI refinements)
+- `[x]` Update `MemoryViewModel.kt` (Implement `performExportBackup` and `performImportBackup`)
+- `[x]` Update `SettingsScreen.kt` (Connect SAF callbacks, update labels, and privacy text)

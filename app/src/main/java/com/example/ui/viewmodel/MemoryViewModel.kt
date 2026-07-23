@@ -2,17 +2,25 @@ package com.example.ui.viewmodel
 
 import android.app.Application
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.database.AppDatabase
 import com.example.data.model.*
 import com.example.data.repository.MemoryRepository
+import com.example.ui.utils.LanguageUtils
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.*
 
 class MemoryViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -245,4 +253,52 @@ class MemoryViewModel(application: Application) : AndroidViewModel(application) 
             false
         }
     }
+
+    // Export backup to a file using Android's Storage Access Framework (SAF)
+    fun performExportBackup(uri: Uri) {
+        val context = getApplication<Application>()
+        val json = exportBackup(context)
+        if (json == null) {
+            Toast.makeText(context, LanguageUtils.getString("export_failed", language.value), Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        viewModelScope.launch {
+            try {
+                context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+                    outputStream.write(json.toByteArray())
+                }
+                val fileName = uri.path?.split("/")?.lastOrNull() ?: "backup.json"
+                Toast.makeText(context, LanguageUtils.getString("export_success", language.value) + fileName, Toast.LENGTH_LONG).show()
+            } catch (e: Exception) {
+                e.printStackTrace()
+                Toast.makeText(context, LanguageUtils.getString("export_failed", language.value) + ": ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    // Import backup from a file using Android's Storage Access Framework (SAF)
+    fun performImportBackup(uri: Uri) {
+        val context = getApplication<Application>()
+        viewModelScope.launch {
+            try {
+                val json = context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                    inputStream.bufferedReader().use { it.readText() }
+                }
+
+                if (json != null && importBackup(json)) {
+                    Toast.makeText(context, LanguageUtils.getString("import_success", language.value), Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, LanguageUtils.getString("import_failed", language.value), Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                Toast.makeText(context, LanguageUtils.getString("import_failed", language.value) + ": ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    // Unused legacy methods replaced by SAF implementation in performExportBackup/performImportBackup
+    fun exportBackupToFile(context: Context) { /* Replaced by SAF */ }
+    fun importBackupFromFile(context: Context) { /* Replaced by SAF */ }
 }
