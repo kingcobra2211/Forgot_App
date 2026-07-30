@@ -16,6 +16,7 @@ import com.squareup.moshi.Types
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.io.File
 
 class MemoryViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -67,13 +68,22 @@ class MemoryViewModel(application: Application) : AndroidViewModel(application) 
         rescheduleReminders()
     }
 
-    // Reactive Search Results combining query, category filter and active memories
+    val searchScope = MutableStateFlow("active") // "active", "archived", "all"
+
+    // Reactive Search Results combining query, category filter and active/archived memories
     val searchResults: StateFlow<List<MemoryWithDetails>> = combine(
         activeMemories,
+        archivedMemories,
         searchQuery,
-        selectedCategory
-    ) { memories, query, category ->
-        memories.filter { memoryWithDetails ->
+        selectedCategory,
+        searchScope
+    ) { active, archived, query, category, scope ->
+        val pool = when (scope) {
+            "archived" -> archived
+            "all" -> active + archived
+            else -> active
+        }
+        pool.filter { memoryWithDetails ->
             val memory = memoryWithDetails.memory
             val matchesQuery = query.isEmpty() ||
                 memory.title.contains(query, ignoreCase = true) ||
@@ -82,7 +92,17 @@ class MemoryViewModel(application: Application) : AndroidViewModel(application) 
                 (memoryWithDetails.person?.contains(query, ignoreCase = true) ?: false) ||
                 (memoryWithDetails.location?.contains(query, ignoreCase = true) ?: false) ||
                 (memoryWithDetails.parkingFloor?.contains(query, ignoreCase = true) ?: false) ||
-                (memoryWithDetails.parkingSlot?.contains(query, ignoreCase = true) ?: false)
+                (memoryWithDetails.parkingSlot?.contains(query, ignoreCase = true) ?: false) ||
+                (memoryWithDetails.documentDetail?.documentNumber?.contains(query, ignoreCase = true) ?: false) ||
+                (memoryWithDetails.documentDetail?.documentType?.contains(query, ignoreCase = true) ?: false) ||
+                (memoryWithDetails.parkingDetail?.vehicleName?.contains(query, ignoreCase = true) ?: false) ||
+                (memoryWithDetails.medicineDetail?.doctorName?.contains(query, ignoreCase = true) ?: false) ||
+                (memoryWithDetails.medicineDetail?.medicineName?.contains(query, ignoreCase = true) ?: false) ||
+                (memoryWithDetails.shoppingDetail?.store?.contains(query, ignoreCase = true) ?: false) ||
+                (memoryWithDetails.shoppingDetail?.shoppingItems?.contains(query, ignoreCase = true) ?: false) ||
+                (memoryWithDetails.placeDetail?.contactPerson?.contains(query, ignoreCase = true) ?: false) ||
+                (memoryWithDetails.urlLink?.contains(query, ignoreCase = true) ?: false) ||
+                (memoryWithDetails.wishlistDetail?.productName?.contains(query, ignoreCase = true) ?: false)
 
             val matchesCategory = category == null || memory.category.lowercase() == category.lowercase()
             matchesQuery && matchesCategory
@@ -99,17 +119,17 @@ class MemoryViewModel(application: Application) : AndroidViewModel(application) 
         sharedPrefs.edit().putString("language_key", newLanguage).apply()
     }
 
-    fun saveMemory(memory: Memory, detail: Any? = null) {
+    fun saveMemory(memory: Memory, detail: Any? = null, isDaily: Boolean = false) {
         viewModelScope.launch {
             val savedMemory = repository.saveMemoryWithDetails(memory, detail)
-            reminderScheduler.schedule(savedMemory)
+            reminderScheduler.schedule(savedMemory, isDaily = isDaily)
         }
     }
 
-    fun updateMemory(memory: Memory) {
+    fun updateMemory(memory: Memory, isDaily: Boolean = false) {
         viewModelScope.launch {
             repository.updateMemory(memory)
-            reminderScheduler.schedule(memory)
+            reminderScheduler.schedule(memory, isDaily = isDaily)
         }
     }
 
@@ -200,12 +220,19 @@ class MemoryViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    // Export memories as a local JSON string
+data class BackupPayload(
+    val memoryWithDetails: MemoryWithDetails,
+    val photoBase64: String? = null,
+    val voiceBase64: String? = null
+)
+
+    // Export memories and all attachments (photos & voice notes) as a local JSON string
     fun exportBackup(): String? {
         return try {
+            val context = getApplication<Application>()
             val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
-            val listType = Types.newParameterizedType(List::class.java, MemoryWithDetails::class.java)
-            val adapter = moshi.adapter<List<MemoryWithDetails>>(listType)
+            val listType = Types.newParameterizedType(List::class.java, BackupPayload::class.java)
+            val adapter = moshi.adapter<List<BackupPayload>>(listType)
 
             // Let's export active, archived and trash memories
             val allList = mutableListOf<MemoryWithDetails>()
@@ -213,21 +240,75 @@ class MemoryViewModel(application: Application) : AndroidViewModel(application) 
             allList.addAll(archivedMemories.value)
             allList.addAll(trashMemories.value)
 
-            adapter.toJson(allList)
+            val payloadList = allList.map { item ->
+                var photoB64: String? = null
+                var voiceB64: String? = null
+                val photoFile = item.memory.photoPath?.let { File(it) }
+                if (photoFile != null && photoFile.exists()) {
+                    photoB64 = android.util.Base64.encodeToString(photoFile.readBytes(), android.util.Base64.NO_WRAP)
+                }
+                val voiceFile = item.memory.voicePath?.let { File(it) }
+                if (voiceFile != null && voiceFile.exists()) {
+                    voiceB64 = android.util.Base64.encodeToString(voiceFile.readBytes(), android.util.Base64.NO_WRAP)
+                }
+                BackupPayload(item, photoB64, voiceB64)
+            }
+
+            adapter.toJson(payloadList)
         } catch (e: Exception) {
             e.printStackTrace()
             null
         }
     }
 
-    // Import memories from a JSON string, restoring them to the database
+    // Import memories and restore all attached photos and voice recordings
     private suspend fun importBackup(json: String): Boolean {
         return try {
+            val context = getApplication<Application>()
             val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
-            val listType = Types.newParameterizedType(List::class.java, MemoryWithDetails::class.java)
-            val adapter = moshi.adapter<List<MemoryWithDetails>>(listType)
+            
+            // Backward compatibility: try reading BackupPayload list first, if fail try MemoryWithDetails list
+            val payloadListType = Types.newParameterizedType(List::class.java, BackupPayload::class.java)
+            val payloadAdapter = moshi.adapter<List<BackupPayload>>(payloadListType)
 
-            val importedMemories = adapter.fromJson(json) ?: return false
+            val payloads = try {
+                payloadAdapter.fromJson(json)
+            } catch (e: Exception) {
+                null
+            }
+
+            val attachmentsDir = File(context.filesDir, "attachments").apply { if (!exists()) mkdirs() }
+
+            val importedMemories = if (!payloads.isNullOrEmpty()) {
+                payloads.map { payload ->
+                    var newPhotoPath = payload.memoryWithDetails.memory.photoPath
+                    var newVoicePath = payload.memoryWithDetails.memory.voicePath
+
+                    if (!payload.photoBase64.isNullOrEmpty()) {
+                        val bytes = android.util.Base64.decode(payload.photoBase64, android.util.Base64.DEFAULT)
+                        val file = File(attachmentsDir, "photo_${System.currentTimeMillis()}_${payload.memoryWithDetails.memory.id}.jpg")
+                        file.writeBytes(bytes)
+                        newPhotoPath = file.absolutePath
+                    }
+
+                    if (!payload.voiceBase64.isNullOrEmpty()) {
+                        val bytes = android.util.Base64.decode(payload.voiceBase64, android.util.Base64.DEFAULT)
+                        val file = File(attachmentsDir, "voice_${System.currentTimeMillis()}_${payload.memoryWithDetails.memory.id}.3gp")
+                        file.writeBytes(bytes)
+                        newVoicePath = file.absolutePath
+                    }
+
+                    val updatedMemory = payload.memoryWithDetails.memory.copy(
+                        photoPath = newPhotoPath,
+                        voicePath = newVoicePath
+                    )
+                    payload.memoryWithDetails.copy(memory = updatedMemory)
+                }
+            } else {
+                val listType = Types.newParameterizedType(List::class.java, MemoryWithDetails::class.java)
+                val adapter = moshi.adapter<List<MemoryWithDetails>>(listType)
+                adapter.fromJson(json) ?: return false
+            }
 
             repository.restoreBackup(importedMemories)
             rescheduleReminders()

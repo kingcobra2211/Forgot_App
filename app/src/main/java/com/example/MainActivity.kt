@@ -17,6 +17,10 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.border
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -47,6 +51,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.example.ui.detail.MemoryDetailScreen
 import com.example.ui.home.HomeScreen
 import com.example.ui.profile.SettingsScreen
 import com.example.ui.remember.RememberScreen
@@ -102,12 +107,26 @@ fun MainAppCoordinator(
         ActivityResultContracts.RequestPermission()
     ) { }
 
+    var isSplashActive by remember { mutableStateOf(true) }
+
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(1800)
+        isSplashActive = false
+    }
+
     LaunchedEffect(Unit) {
         if (
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
             notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
+
+        val activity = context as? ComponentActivity
+        val targetMemoryId = activity?.intent?.getIntExtra(com.example.data.repository.ReminderReceiver.EXTRA_MEMORY_ID, 0) ?: 0
+        if (targetMemoryId != 0) {
+            activity?.intent?.removeExtra(com.example.data.repository.ReminderReceiver.EXTRA_MEMORY_ID)
+            navController.navigate("remember?memoryId=$targetMemoryId")
         }
     }
     val isUpdateAvailable by updateViewModel.isUpdateAvailable.collectAsState()
@@ -137,7 +156,10 @@ fun MainAppCoordinator(
         CategoryRegistry.categories.sortedByDescending { categoryUsageCounts[it.name] ?: 0 }
     }
 
-    Row(modifier = Modifier.fillMaxSize()) {
+    if (isSplashActive) {
+        SplashScreen()
+    } else {
+        Row(modifier = Modifier.fillMaxSize()) {
         // 1. Adaptive Navigation Rail for non-compact screens
         if (!isCompact && currentRoute in listOf("home", "search", "reminders", "settings")) {
             NavigationRail(
@@ -311,21 +333,6 @@ fun MainAppCoordinator(
                         )
                     }
                 }
-            },
-            floatingActionButton = {
-                if (currentRoute == "home" && isCompact) {
-                    FloatingActionButton(
-                        onClick = { showQuickAddDialog = true },
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = Color.White,
-                        modifier = Modifier
-                            .padding(bottom = 16.dp)
-                            .testTag("home_quick_add_fab"),
-                        shape = CircleShape
-                    ) {
-                        Icon(imageVector = Icons.Default.Add, contentDescription = "Quick Add FAB", modifier = Modifier.size(28.dp))
-                    }
-                }
             }
         ) { innerPadding ->
             NavHost(
@@ -339,7 +346,7 @@ fun MainAppCoordinator(
                 HomeScreen(
                     viewModel = viewModel,
                     onNavigateToRemember = { id, category ->
-                        val route = if (id != null) "remember?memoryId=$id" else "remember?category=$category"
+                        val route = if (id != null) "detail?memoryId=$id" else "remember?category=$category"
                         navController.navigate(route)
                     },
                     onNavigateToSearch = { navController.navigate("search") },
@@ -351,7 +358,7 @@ fun MainAppCoordinator(
                 SearchScreen(
                     viewModel = viewModel,
                     onNavigateToRemember = { id, category ->
-                        val route = if (id != null) "remember?memoryId=$id" else "remember?category=$category"
+                        val route = if (id != null) "detail?memoryId=$id" else "remember?category=$category"
                         navController.navigate(route)
                     }
                 )
@@ -361,7 +368,7 @@ fun MainAppCoordinator(
                 RemindersScreen(
                     viewModel = viewModel,
                     onNavigateToRemember = { id, category ->
-                        val route = if (id != null) "remember?memoryId=$id" else "remember?category=$category"
+                        val route = if (id != null) "detail?memoryId=$id" else "remember?category=$category"
                         navController.navigate(route)
                     }
                 )
@@ -372,7 +379,7 @@ fun MainAppCoordinator(
                     viewModel = viewModel,
                     updateViewModel = updateViewModel,
                     onNavigateToRemember = { id, category ->
-                        val route = if (id != null) "remember?memoryId=$id" else "remember?category=$category"
+                        val route = if (id != null) "detail?memoryId=$id" else "remember?category=$category"
                         navController.navigate(route)
                     },
                     onExportBackup = {
@@ -381,6 +388,24 @@ fun MainAppCoordinator(
                     onImportBackup = {
                         openDocumentLauncher.launch(arrayOf("application/json", "*/*"))
                     }
+                )
+            }
+
+            composable(
+                route = "detail?memoryId={memoryId}",
+                arguments = listOf(
+                    navArgument("memoryId") {
+                        type = NavType.IntType
+                        defaultValue = 0
+                    }
+                )
+            ) { backStackEntry ->
+                val memoryId = backStackEntry.arguments?.getInt("memoryId") ?: 0
+                MemoryDetailScreen(
+                    memoryId = memoryId,
+                    viewModel = viewModel,
+                    onNavigateBack = { navController.popBackStack() },
+                    onEditMemory = { id -> navController.navigate("remember?memoryId=$id") }
                 )
             }
 
@@ -496,13 +521,13 @@ fun MainAppCoordinator(
                                     Column(
                                         modifier = Modifier
                                             .fillMaxSize()
-                                            .padding(8.dp),
+                                            .padding(4.dp),
                                         horizontalAlignment = Alignment.CenterHorizontally,
                                         verticalArrangement = Arrangement.Center
                                     ) {
                                         Box(
                                             modifier = Modifier
-                                                .size(36.dp)
+                                                .size(34.dp)
                                                 .clip(CircleShape)
                                                 .background(catItem.color.copy(alpha = 0.2f)),
                                             contentAlignment = Alignment.Center
@@ -511,16 +536,18 @@ fun MainAppCoordinator(
                                                 imageVector = catItem.icon,
                                                 contentDescription = catItem.name,
                                                 tint = catItem.color,
-                                                modifier = Modifier.size(20.dp)
+                                                modifier = Modifier.size(18.dp)
                                             )
                                         }
-                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Spacer(modifier = Modifier.height(6.dp))
                                         Text(
                                             text = LanguageUtils.getString(catItem.name, language),
-                                            style = MaterialTheme.typography.bodySmall,
+                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                                             fontWeight = FontWeight.Bold,
                                             textAlign = TextAlign.Center,
                                             maxLines = 1,
+                                            overflow = TextOverflow.Clip,
+                                            softWrap = false,
                                             color = MaterialTheme.colorScheme.onSurface
                                         )
                                     }
@@ -543,6 +570,8 @@ fun MainAppCoordinator(
             }
         }
     }
+        }
+    }
 
     if (isUpdateAvailable) {
         com.example.ui.components.UpdateDialog(
@@ -551,4 +580,60 @@ fun MainAppCoordinator(
         )
     }
 }
+
+@Composable
+fun SplashScreen() {
+    var startAnimation by remember { mutableStateOf(false) }
+    val alphaAnim by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (startAnimation) 1f else 0f,
+        animationSpec = androidx.compose.animation.core.tween(durationMillis = 800)
+    )
+    val scaleAnim by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (startAnimation) 1f else 0.82f,
+        animationSpec = androidx.compose.animation.core.tween(durationMillis = 800)
+    )
+
+    LaunchedEffect(Unit) {
+        startAnimation = true
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.graphicsLayer(
+                alpha = alphaAnim,
+                scaleX = scaleAnim,
+                scaleY = scaleAnim
+            )
+        ) {
+            Image(
+                painter = painterResource(id = R.drawable.ic_app_logo),
+                contentDescription = "Forgot App Logo",
+                modifier = Modifier
+                    .size(130.dp)
+                    .clip(CircleShape)
+                    .border(2.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f), CircleShape)
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+            Text(
+                text = "Forgot",
+                style = MaterialTheme.typography.headlineLarge,
+                fontWeight = FontWeight.Black,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Save it once. Forget nothing.",
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f)
+            )
+        }
+    }
 }

@@ -12,6 +12,7 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.launch
+import androidx.core.content.FileProvider
 import androidx.compose.animation.*
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -24,7 +25,9 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -36,7 +39,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -64,6 +69,7 @@ fun RememberScreen(
     onCancel: () -> Unit
 ) {
     val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
     val language by viewModel.language.collectAsState()
     val metrics = LocalResponsiveMetrics.current
     
@@ -112,8 +118,14 @@ fun RememberScreen(
     var medicineDoseMorning by remember { mutableStateOf(existingMemoryWithDetails?.medicineDoseMorning ?: false) }
     var medicineDoseAfternoon by remember { mutableStateOf(existingMemoryWithDetails?.medicineDoseAfternoon ?: false) }
     var medicineDoseNight by remember { mutableStateOf(existingMemoryWithDetails?.medicineDoseNight ?: false) }
+    var morningTime by remember { mutableStateOf("08:00 AM") }
+    var afternoonTime by remember { mutableStateOf("01:00 PM") }
+    var nightTime by remember { mutableStateOf("09:00 PM") }
     var doctorName by remember { mutableStateOf(existingMemoryWithDetails?.medicineDetail?.doctorName ?: "") }
     var dosage by remember { mutableStateOf(existingMemoryWithDetails?.medicineDetail?.dosage ?: "") }
+
+    // Reminder Frequency state (Once vs Daily)
+    var isDailyReminder by remember { mutableStateOf(existingMemoryWithDetails?.memory?.category?.lowercase() == "medicine") }
 
     // Place states
     var contactPerson by remember { mutableStateOf(existingMemoryWithDetails?.placeDetail?.contactPerson ?: "") }
@@ -171,14 +183,14 @@ fun RememberScreen(
                 }
             }
         } else {
-            // Quick titles templates for clean start
-            updateDefaultTitle(category) { title = it }
+            if (title.isBlank() || isDefaultTitle(title)) {
+                updateDefaultTitle(category) { title = it }
+            }
         }
     }
 
-    // Update dynamic defaults on category changes
     LaunchedEffect(category) {
-        if (!isEditing) {
+        if (!isEditing && (title.isBlank() || isDefaultTitle(title))) {
             updateDefaultTitle(category) { title = it }
         }
     }
@@ -325,22 +337,30 @@ fun RememberScreen(
         }
     }
 
-    val cameraLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.TakePicturePreview()
-    ) { bitmap ->
-        if (bitmap != null) {
-            val fileName = "img_${System.currentTimeMillis()}.jpg"
-            val storageDir = File(context.filesDir, "attachments")
-            if (!storageDir.exists()) storageDir.mkdirs()
-            val destFile = File(storageDir, fileName)
-            try {
-                destFile.outputStream().use { out ->
-                    bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
-                }
-                addAttachment(destFile.absolutePath)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+    var tempCameraPath by remember { mutableStateOf<String?>(null) }
+
+    val takePictureLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success && tempCameraPath != null) {
+            addAttachment(tempCameraPath!!)
+        }
+    }
+
+    val launchFullCamera = {
+        try {
+            val storageDir = File(context.filesDir, "attachments").apply { if (!exists()) mkdirs() }
+            val photoFile = File(storageDir, "img_${System.currentTimeMillis()}.jpg")
+            val photoUri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                photoFile
+            )
+            tempCameraPath = photoFile.absolutePath
+            takePictureLauncher.launch(photoUri)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Toast.makeText(context, "Failed to launch camera: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -348,17 +368,17 @@ fun RememberScreen(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (isGranted) {
-            cameraLauncher.launch()
+            launchFullCamera()
         } else {
             Toast.makeText(context, "Camera permission is required to capture photos", Toast.LENGTH_SHORT).show()
         }
     }
 
     val galleryLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri ->
-        if (uri != null) {
-            val fileName = "img_${System.currentTimeMillis()}.jpg"
+        contract = ActivityResultContracts.GetMultipleContents()
+    ) { uris ->
+        uris.forEach { uri ->
+            val fileName = "img_${System.currentTimeMillis()}_${getFileName(context, uri) ?: "photo.jpg"}"
             val path = copyUriToInternalStorage(context, uri, fileName)
             if (path != null) {
                 addAttachment(path)
@@ -367,9 +387,9 @@ fun RememberScreen(
     }
 
     val documentLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri ->
-        if (uri != null) {
+        contract = ActivityResultContracts.GetMultipleContents()
+    ) { uris ->
+        uris.forEach { uri ->
             val originalName = getFileName(context, uri) ?: "file"
             val fileName = "doc_${System.currentTimeMillis()}_$originalName"
             val path = copyUriToInternalStorage(context, uri, fileName)
@@ -676,6 +696,309 @@ fun RememberScreen(
                                 }
                             }
                             "medicine" -> {
+                                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    Text(
+                                        text = "Select Daily Dose Schedule & Custom Times:",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        // Morning Chip & Time Picker
+                                        Surface(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .border(
+                                                    1.dp,
+                                                    if (medicineDoseMorning) activeCategoryColor else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                                                    RoundedCornerShape(12.dp)
+                                                )
+                                                .clickable {
+                                                    medicineDoseMorning = !medicineDoseMorning
+                                                },
+                                            color = if (medicineDoseMorning) activeCategoryColor.copy(alpha = 0.1f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(8.dp),
+                                                horizontalAlignment = Alignment.CenterHorizontally
+                                            ) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Checkbox(
+                                                        checked = medicineDoseMorning,
+                                                        onCheckedChange = { medicineDoseMorning = it },
+                                                        modifier = Modifier.size(24.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Text("Morning ☀️", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
+                                                }
+                                                Spacer(modifier = Modifier.height(4.dp))
+                                                OutlinedButton(
+                                                    onClick = {
+                                                        TimePickerDialog(context, { _, hour, minute ->
+                                                            val amPm = if (hour >= 12) "PM" else "AM"
+                                                            val h = if (hour % 12 == 0) 12 else hour % 12
+                                                            morningTime = String.format("%02d:%02d %s", h, minute, amPm)
+                                                            medicineDoseMorning = true
+                                                        }, 8, 0, false).show()
+                                                    },
+                                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                                                    modifier = Modifier.height(30.dp)
+                                                ) {
+                                                    Text(morningTime, style = MaterialTheme.typography.labelSmall)
+                                                }
+                                            }
+                                        }
+
+                                        // Afternoon Chip & Time Picker
+                                        Surface(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .border(
+                                                    1.dp,
+                                                    if (medicineDoseAfternoon) activeCategoryColor else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                                                    RoundedCornerShape(12.dp)
+                                                )
+                                                .clickable {
+                                                    medicineDoseAfternoon = !medicineDoseAfternoon
+                                                },
+                                            color = if (medicineDoseAfternoon) activeCategoryColor.copy(alpha = 0.1f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(8.dp),
+                                                horizontalAlignment = Alignment.CenterHorizontally
+                                            ) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Checkbox(
+                                                        checked = medicineDoseAfternoon,
+                                                        onCheckedChange = { medicineDoseAfternoon = it },
+                                                        modifier = Modifier.size(24.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Text("Afternoon 🌤️", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
+                                                }
+                                                Spacer(modifier = Modifier.height(4.dp))
+                                                OutlinedButton(
+                                                    onClick = {
+                                                        TimePickerDialog(context, { _, hour, minute ->
+                                                            val amPm = if (hour >= 12) "PM" else "AM"
+                                                            val h = if (hour % 12 == 0) 12 else hour % 12
+                                                            afternoonTime = String.format("%02d:%02d %s", h, minute, amPm)
+                                                            medicineDoseAfternoon = true
+                                                        }, 13, 0, false).show()
+                                                    },
+                                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                                                    modifier = Modifier.height(30.dp)
+                                                ) {
+                                                    Text(afternoonTime, style = MaterialTheme.typography.labelSmall)
+                                                }
+                                            }
+                                        }
+
+                                        // Night Chip & Time Picker
+                                        Surface(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .border(
+                                                    1.dp,
+                                                    if (medicineDoseNight) activeCategoryColor else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                                                    RoundedCornerShape(12.dp)
+                                                )
+                                                .clickable {
+                                                    medicineDoseNight = !medicineDoseNight
+                                                },
+                                            color = if (medicineDoseNight) activeCategoryColor.copy(alpha = 0.1f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(8.dp),
+                                                horizontalAlignment = Alignment.CenterHorizontally
+                                            ) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Checkbox(
+                                                        checked = medicineDoseNight,
+                                                        onCheckedChange = { medicineDoseNight = it },
+                                                        modifier = Modifier.size(24.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Text("Night 🌙", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
+                                                }
+                                                Spacer(modifier = Modifier.height(4.dp))
+                                                OutlinedButton(
+                                                    onClick = {
+                                                        TimePickerDialog(context, { _, hour, minute ->
+                                                            val amPm = if (hour >= 12) "PM" else "AM"
+                                                            val h = if (hour % 12 == 0) 12 else hour % 12
+                                                            nightTime = String.format("%02d:%02d %s", h, minute, amPm)
+                                                            medicineDoseNight = true
+                                                        }, 21, 0, false).show()
+                                                    },
+                                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                                                    modifier = Modifier.height(30.dp)
+                                                ) {
+                                                    Text(nightTime, style = MaterialTheme.typography.labelSmall)
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Schedule Live Summary
+                                    val selectedTimes = mutableListOf<String>()
+                                    if (medicineDoseMorning) selectedTimes.add(morningTime)
+                                    if (medicineDoseAfternoon) selectedTimes.add(afternoonTime)
+                                    if (medicineDoseNight) selectedTimes.add(nightTime)
+                                    
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(activeCategoryColor.copy(alpha = 0.08f))
+                                            .padding(10.dp)
+                                    ) {
+                                        Text(
+                                            text = if (selectedTimes.isNotEmpty()) "💊 Daily alarms scheduled for: ${selectedTimes.joinToString(", ")}"
+                                                   else "⚠️ Select at least one dose time slot for daily reminders",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = if (selectedTimes.isNotEmpty()) activeCategoryColor else MaterialTheme.colorScheme.error
+                                        )
+                                    }
+                                }
+                            }
+                            "money" -> {
+                                OutlinedTextField(
+                                    value = person,
+                                    onValueChange = { person = it },
+                                    label = { Text("Person Name *") },
+                                    placeholder = { Text("Friend, Vendor...") },
+                                    modifier = Modifier.fillMaxWidth().testTag("money_person_input"),
+                                    singleLine = true
+                                )
+                                OutlinedTextField(
+                                    value = amount,
+                                    onValueChange = { amount = it },
+                                    label = { Text("Amount *") },
+                                    placeholder = { Text("500") },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    modifier = Modifier.fillMaxWidth().testTag("money_amount_input"),
+                                    singleLine = true
+                                )
+                            }
+                            "parking" -> {
+                                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    OutlinedTextField(
+                                        value = parkingFloor,
+                                        onValueChange = { parkingFloor = it },
+                                        label = { Text("Floor *") },
+                                        placeholder = { Text("B2, Floor 4...") },
+                                        modifier = Modifier.weight(1f).testTag("parking_floor_input"),
+                                        singleLine = true
+                                    )
+                                    OutlinedTextField(
+                                        value = parkingSlot,
+                                        onValueChange = { parkingSlot = it },
+                                        label = { Text("Slot *") },
+                                        placeholder = { Text("A34, 11...") },
+                                        modifier = Modifier.weight(1f).testTag("parking_slot_input"),
+                                        singleLine = true
+                                    )
+                                }
+                            }
+                            "document" -> {
+                                OutlinedTextField(
+                                    value = docType,
+                                    onValueChange = { docType = it },
+                                    label = { Text("Document Type *") },
+                                    placeholder = { Text("Passport, License, Aadhaar...") },
+                                    modifier = Modifier.fillMaxWidth().testTag("doc_type_input"),
+                                    singleLine = true
+                                )
+                                OutlinedTextField(
+                                    value = docNumber,
+                                    onValueChange = { docNumber = it },
+                                    label = { Text("Document Number *") },
+                                    placeholder = { Text("AXX991823...") },
+                                    modifier = Modifier.fillMaxWidth().testTag("doc_number_input"),
+                                    singleLine = true
+                                )
+                            }
+                            "shopping" -> {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    OutlinedTextField(
+                                        value = newChecklistItemText,
+                                        onValueChange = { newChecklistItemText = it },
+                                        placeholder = { Text("Add checklist/shopping item...") },
+                                        modifier = Modifier.weight(1f).testTag("shopping_item_input"),
+                                        singleLine = true
+                                    )
+                                    Button(
+                                        onClick = {
+                                            if (newChecklistItemText.trim().isNotEmpty()) {
+                                                checklistItems.add(Pair(newChecklistItemText.trim(), false))
+                                                newChecklistItemText = ""
+                                            }
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = activeCategoryColor)
+                                    ) {
+                                        Icon(imageVector = Icons.Default.Add, contentDescription = "Add Item")
+                                    }
+                                }
+
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))
+                                        .padding(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    if (checklistItems.isEmpty()) {
+                                        Text(
+                                            text = "No items in list yet * (Add at least one)",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                            modifier = Modifier.padding(8.dp)
+                                        )
+                                    } else {
+                                        checklistItems.forEachIndexed { index, pair ->
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Checkbox(
+                                                        checked = pair.second,
+                                                        onCheckedChange = { checked ->
+                                                            checklistItems[index] = pair.copy(second = checked)
+                                                        }
+                                                    )
+                                                    Text(text = pair.first, style = MaterialTheme.typography.bodyMedium)
+                                                }
+                                                IconButton(
+                                                    onClick = { checklistItems.removeAt(index) },
+                                                    modifier = Modifier.size(36.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Close,
+                                                        contentDescription = "Remove item",
+                                                        tint = Color(0xFFEF5350)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            "medicine" -> {
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -763,52 +1086,88 @@ fun RememberScreen(
                             ) {
                                 when (category.lowercase()) {
                                     "money" -> {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.SpaceBetween
-                                        ) {
+                                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                             Text(
                                                 text = "Transaction Status",
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                fontWeight = FontWeight.Bold
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface
                                             )
-                                            Row {
-                                                Button(
-                                                    onClick = { isPaid = false },
-                                                    colors = ButtonDefaults.buttonColors(
-                                                        containerColor = if (!isPaid) Color(0xFFEF5350) else MaterialTheme.colorScheme.surfaceVariant
-                                                    ),
-                                                    shape = RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp)
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                            ) {
+                                                // Pending Card
+                                                Surface(
+                                                    onClick = {
+                                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                        isPaid = false
+                                                    },
+                                                    shape = RoundedCornerShape(12.dp),
+                                                    color = if (!isPaid) Color(0xFFEF5350).copy(alpha = 0.18f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                                    border = BorderStroke(1.5.dp, if (!isPaid) Color(0xFFEF5350) else Color.Transparent),
+                                                    modifier = Modifier.weight(1f)
                                                 ) {
-                                                    Text(
-                                                        "Pending",
-                                                        color = if (!isPaid) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-                                                    )
+                                                    Row(
+                                                        modifier = Modifier.padding(12.dp),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.Center
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.HourglassEmpty,
+                                                            contentDescription = "Pending",
+                                                            tint = if (!isPaid) Color(0xFFD32F2F) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                            modifier = Modifier.size(18.dp)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(6.dp))
+                                                        Text(
+                                                            text = "Pending Return",
+                                                            fontWeight = FontWeight.Bold,
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            color = if (!isPaid) Color(0xFFD32F2F) else MaterialTheme.colorScheme.onSurfaceVariant
+                                                        )
+                                                    }
                                                 }
-                                                Button(
-                                                    onClick = { isPaid = true },
-                                                    colors = ButtonDefaults.buttonColors(
-                                                        containerColor = if (isPaid) Color(0xFF66BB6A) else MaterialTheme.colorScheme.surfaceVariant
-                                                    ),
-                                                    shape = RoundedCornerShape(topEnd = 8.dp, bottomEnd = 8.dp)
+
+                                                // Settled Card
+                                                Surface(
+                                                    onClick = {
+                                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                        isPaid = true
+                                                    },
+                                                    shape = RoundedCornerShape(12.dp),
+                                                    color = if (isPaid) Color(0xFF4CAF50).copy(alpha = 0.18f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                                    border = BorderStroke(1.5.dp, if (isPaid) Color(0xFF2E7D32) else Color.Transparent),
+                                                    modifier = Modifier.weight(1f)
                                                 ) {
-                                                    Text(
-                                                        "Settled",
-                                                        color = if (isPaid) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-                                                    )
+                                                    Row(
+                                                        modifier = Modifier.padding(12.dp),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.Center
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.CheckCircle,
+                                                            contentDescription = "Settled",
+                                                            tint = if (isPaid) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                            modifier = Modifier.size(18.dp)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(6.dp))
+                                                        Text(
+                                                            text = "Settled / Returned",
+                                                            fontWeight = FontWeight.Bold,
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            color = if (isPaid) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurfaceVariant
+                                                        )
+                                                    }
                                                 }
                                             }
                                         }
-                                        
-                                        // Category specific attachments option
+
                                         AttachmentPickerRow(
                                             category = category,
                                             photoPath = photoPathState,
                                             onPhotoSelected = { photoPathState = it },
-                                            onCameraClicked = {
-                                                cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
-                                            },
+                                            onCameraClicked = { cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA) },
                                             onGalleryClicked = { galleryLauncher.launch("image/*") },
                                             onDocClicked = { documentLauncher.launch("*/*") }
                                         )
@@ -882,7 +1241,7 @@ fun RememberScreen(
                                                     Spacer(modifier = Modifier.width(8.dp))
                                                     Text(text = expiryStr, fontWeight = FontWeight.Bold)
                                                 }
-                                                Text(text = "Change Date", color = activeCategoryColor, fontWeight = FontWeight.Black, style = MaterialTheme.typography.bodySmall)
+                                                Text(text = "Change Date", style = MaterialTheme.typography.labelSmall, color = activeCategoryColor)
                                             }
                                         }
 
@@ -892,7 +1251,7 @@ fun RememberScreen(
                                             onPhotoSelected = { photoPathState = it },
                                             onCameraClicked = { cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA) },
                                             onGalleryClicked = { galleryLauncher.launch("image/*") },
-                                            onDocClicked = { documentLauncher.launch("application/pdf") }
+                                            onDocClicked = { documentLauncher.launch("*/*") }
                                         )
                                     }
                                     "shopping" -> {
@@ -924,21 +1283,47 @@ fun RememberScreen(
                                     }
                                     "medicine" -> {
                                         OutlinedTextField(
-                                            value = doctorName,
-                                            onValueChange = { doctorName = it },
-                                            label = { Text("Doctor Name") },
-                                            placeholder = { Text("Dr. Sharma, Dr. Jones...") },
+                                            value = dosage,
+                                            onValueChange = { dosage = it },
+                                            label = { Text("Dosage / Intake Instructions") },
+                                            placeholder = { Text("1 Tablet after food, 5ml syrup...") },
                                             modifier = Modifier.fillMaxWidth(),
                                             singleLine = true
                                         )
                                         OutlinedTextField(
-                                            value = dosage,
-                                            onValueChange = { dosage = it },
-                                            label = { Text("Dosage") },
-                                            placeholder = { Text("1 Tablet, 5ml...") },
+                                            value = doctorName,
+                                            onValueChange = { doctorName = it },
+                                            label = { Text("Prescribing Doctor / Hospital") },
+                                            placeholder = { Text("Dr. Sharma, City Clinic...") },
                                             modifier = Modifier.fillMaxWidth(),
                                             singleLine = true
                                         )
+
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(10.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.CameraAlt,
+                                                    contentDescription = "Attach Tablet Photo",
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Text(
+                                                    text = "Attach tablet/box photo below to easily identify medicine in reminder notifications!",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    fontWeight = FontWeight.Medium
+                                                )
+                                            }
+                                        }
+
                                         AttachmentPickerRow(
                                             category = category,
                                             photoPath = photoPathState,
@@ -1091,7 +1476,7 @@ fun RememberScreen(
             }
 
             // ==========================================
-            // FLOW SECTION 4: REMINDER
+            // FLOW SECTION 4: REMINDER (Once vs Daily)
             // ==========================================
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -1111,64 +1496,188 @@ fun RememberScreen(
                         color = activeCategoryColor
                     )
 
+                    // Redesigned Segmented Selector: Once vs Daily
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        // Once Card
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(14.dp))
+                                .border(
+                                    1.5.dp,
+                                    if (!isDailyReminder) activeCategoryColor else MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
+                                    RoundedCornerShape(14.dp)
+                                )
+                                .clickable { isDailyReminder = false },
+                            color = if (!isDailyReminder) activeCategoryColor.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(vertical = 10.dp, horizontal = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Event,
+                                    contentDescription = null,
+                                    tint = if (!isDailyReminder) activeCategoryColor else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column {
+                                    Text(
+                                        text = "Once",
+                                        fontWeight = FontWeight.Bold,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = if (!isDailyReminder) activeCategoryColor else MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = "Date & Time",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Daily Card
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(14.dp))
+                                .border(
+                                    1.5.dp,
+                                    if (isDailyReminder) activeCategoryColor else MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
+                                    RoundedCornerShape(14.dp)
+                                )
+                                .clickable { isDailyReminder = true },
+                            color = if (isDailyReminder) activeCategoryColor.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(vertical = 10.dp, horizontal = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Repeat,
+                                    contentDescription = null,
+                                    tint = if (isDailyReminder) activeCategoryColor else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column {
+                                    Text(
+                                        text = "Daily",
+                                        fontWeight = FontWeight.Bold,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = if (isDailyReminder) activeCategoryColor else MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = "Everyday",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     val reminderStr = if (reminderTimestamp != null) {
-                        SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault()).format(Date(reminderTimestamp!!))
-                    } else "No Reminder Scheduled"
+                        if (isDailyReminder) {
+                            "Daily at " + SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(reminderTimestamp!!))
+                        } else {
+                            SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault()).format(Date(reminderTimestamp!!))
+                        }
+                    } else if (isDailyReminder) "Tap to Set Daily Time (e.g. 8:00 AM)" else "No Reminder Scheduled"
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Card(
-                            modifier = Modifier.weight(1f),
-                            onClick = {
-                                val calendar = Calendar.getInstance()
-                                DatePickerDialog(
-                                    context,
-                                    { _, year, month, dayOfMonth ->
-                                        val timeCalendar = Calendar.getInstance()
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(14.dp))
+                                .clickable {
+                                    val calendar = Calendar.getInstance()
+                                    if (isDailyReminder) {
+                                        // Daily: Pick Time only
                                         TimePickerDialog(
                                             context,
                                             { _, hourOfDay, minute ->
                                                 val finalCalendar = Calendar.getInstance()
-                                                finalCalendar.set(Calendar.YEAR, year)
-                                                finalCalendar.set(Calendar.MONTH, month)
-                                                finalCalendar.set(Calendar.DAY_OF_MONTH, dayOfMonth)
                                                 finalCalendar.set(Calendar.HOUR_OF_DAY, hourOfDay)
                                                 finalCalendar.set(Calendar.MINUTE, minute)
                                                 finalCalendar.set(Calendar.SECOND, 0)
+                                                if (finalCalendar.timeInMillis <= System.currentTimeMillis()) {
+                                                    finalCalendar.add(Calendar.DAY_OF_MONTH, 1)
+                                                }
                                                 reminderTimestamp = finalCalendar.timeInMillis
                                             },
-                                            timeCalendar.get(Calendar.HOUR_OF_DAY),
-                                            timeCalendar.get(Calendar.MINUTE),
+                                            calendar.get(Calendar.HOUR_OF_DAY),
+                                            calendar.get(Calendar.MINUTE),
                                             false
                                         ).show()
-                                    },
-                                    calendar.get(Calendar.YEAR),
-                                    calendar.get(Calendar.MONTH),
-                                    calendar.get(Calendar.DAY_OF_MONTH)
-                                ).show()
-                            },
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-                            )
+                                    } else {
+                                        // Once: Pick Date then Time
+                                        DatePickerDialog(
+                                            context,
+                                            { _, year, month, dayOfMonth ->
+                                                val timeCalendar = Calendar.getInstance()
+                                                TimePickerDialog(
+                                                    context,
+                                                    { _, hourOfDay, minute ->
+                                                        val finalCalendar = Calendar.getInstance()
+                                                        finalCalendar.set(Calendar.YEAR, year)
+                                                        finalCalendar.set(Calendar.MONTH, month)
+                                                        finalCalendar.set(Calendar.DAY_OF_MONTH, dayOfMonth)
+                                                        finalCalendar.set(Calendar.HOUR_OF_DAY, hourOfDay)
+                                                        finalCalendar.set(Calendar.MINUTE, minute)
+                                                        finalCalendar.set(Calendar.SECOND, 0)
+                                                        reminderTimestamp = finalCalendar.timeInMillis
+                                                    },
+                                                    timeCalendar.get(Calendar.HOUR_OF_DAY),
+                                                    timeCalendar.get(Calendar.MINUTE),
+                                                    false
+                                                ).show()
+                                            },
+                                            calendar.get(Calendar.YEAR),
+                                            calendar.get(Calendar.MONTH),
+                                            calendar.get(Calendar.DAY_OF_MONTH)
+                                        ).show()
+                                    }
+                                },
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                            shape = RoundedCornerShape(14.dp),
+                            border = BorderStroke(1.dp, activeCategoryColor.copy(alpha = 0.2f))
                         ) {
                             Row(
                                 modifier = Modifier.padding(14.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.NotificationsActive,
+                                    imageVector = if (isDailyReminder) Icons.Default.Repeat else Icons.Default.NotificationsActive,
                                     contentDescription = "Notification reminder",
-                                    tint = activeCategoryColor
+                                    tint = activeCategoryColor,
+                                    modifier = Modifier.size(22.dp)
                                 )
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Text(
-                                    text = reminderStr,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Bold
-                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text(
+                                        text = if (reminderTimestamp != null) reminderStr else "Tap to Set Reminder Time",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (reminderTimestamp != null) MaterialTheme.colorScheme.onSurface else activeCategoryColor
+                                    )
+                                    if (reminderTimestamp != null) {
+                                        Text(
+                                            text = if (isDailyReminder) "Reschedules automatically everyday" else "Triggers once on date",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                        )
+                                    }
+                                }
                             }
                         }
                         
@@ -1578,8 +2087,8 @@ fun RememberScreen(
                             else -> null
                         }
 
-                        // Save transactionally
-                        viewModel.saveMemory(memory, detailObj)
+                        // Save transactionally with Once vs Daily reminder status
+                        viewModel.saveMemory(memory, detailObj, isDaily = isDailyReminder)
                         onSaveComplete()
                     },
                     modifier = Modifier
@@ -1678,6 +2187,10 @@ fun AttachmentPickerRow(
             }
         }
     }
+}
+
+private fun isDefaultTitle(title: String): Boolean {
+    return title.trim().lowercase() in setOf("car parking location", "daily medicine reminders", "shopping items", "")
 }
 
 private fun updateDefaultTitle(category: String, onTitleUpdate: (String) -> Unit) {

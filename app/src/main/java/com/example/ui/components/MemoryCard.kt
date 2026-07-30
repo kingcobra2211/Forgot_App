@@ -41,12 +41,51 @@ fun MemoryCard(
     onArchiveToggle: () -> Unit,
     onDelete: () -> Unit,
     onUpdateChecklist: (String) -> Unit = {},
-    onUpdatePaidStatus: (Boolean) -> Unit = {}
+    onUpdatePaidStatus: (Boolean) -> Unit = {},
+    onSnoozeReminder: (() -> Unit)? = null,
+    onClearReminder: (() -> Unit)? = null
 ) {
     val memory = memoryWithDetails.memory
     val categoryItem = CategoryRegistry.getCategoryItem(memory.category)
     val accentColor = categoryItem.color
     val metrics = LocalResponsiveMetrics.current
+
+    var showDeleteConfirmationDialog by remember { mutableStateOf(false) }
+
+    if (showDeleteConfirmationDialog) {
+        val isTrash = memory.status == "Trash"
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmationDialog = false },
+            title = {
+                Text(
+                    text = if (isTrash) "Permanently Delete Memory?" else "Move Memory to Trash?",
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    text = if (isTrash) "Are you sure you want to permanently delete \"${memory.title.ifBlank { "this memory" }}\"? This action cannot be undone."
+                    else "Are you sure you want to move \"${memory.title.ifBlank { "this memory" }}\" to trash?"
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeleteConfirmationDialog = false
+                        onDelete()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF5350))
+                ) {
+                    Text(if (isTrash) "Delete Permanently" else "Move to Trash", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showDeleteConfirmationDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
     
     // Parse checklist
     val checklistItems = remember(memoryWithDetails.shoppingDetail?.shoppingItems) {
@@ -73,6 +112,7 @@ fun MemoryCard(
 
     // Modern Material 3 Outlined Card with subtle tonal tint
     Card(
+        onClick = onEdit,
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = metrics.verticalPadding / 3)
@@ -611,26 +651,62 @@ fun MemoryCard(
                 ) {
                     if (memory.reminderDate != null) {
                         val reminderStr = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date(memory.reminderDate))
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(Color(0xFFFFF3E0))
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.NotificationsActive,
-                                    contentDescription = "Active Reminder Scheduled",
-                                    tint = Color(0xFFE65100),
-                                    modifier = Modifier.size(13.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = reminderStr,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color(0xFFE65100),
-                                    fontWeight = FontWeight.Bold
-                                )
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(Color(0xFFFFF3E0))
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.NotificationsActive,
+                                        contentDescription = "Active Reminder Scheduled",
+                                        tint = Color(0xFFE65100),
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = reminderStr,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color(0xFFE65100),
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                            if (onSnoozeReminder != null) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
+                                        .clickable { onSnoozeReminder() }
+                                        .padding(horizontal = 6.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        text = "+1 Day",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 10.sp
+                                    )
+                                }
+                            }
+                            if (onClearReminder != null) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(Color(0xFF66BB6A).copy(alpha = 0.15f))
+                                        .clickable { onClearReminder() }
+                                        .padding(horizontal = 6.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        text = "Done",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color(0xFF2E7D32),
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 10.sp
+                                    )
+                                }
                             }
                         }
                     } else {
@@ -676,9 +752,9 @@ fun MemoryCard(
                         }
                     }
 
-                    // Delete Button
+                    // Delete Button with confirmation dialog
                     IconButton(
-                        onClick = onDelete,
+                        onClick = { showDeleteConfirmationDialog = true },
                         modifier = Modifier.size(38.dp)
                     ) {
                         Icon(

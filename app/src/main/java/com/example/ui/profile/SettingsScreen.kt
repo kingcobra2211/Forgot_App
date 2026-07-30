@@ -70,6 +70,7 @@ fun SettingsScreen(
     val metrics = LocalResponsiveMetrics.current
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0.dp),
         topBar = {
             TopAppBar(
                 title = {
@@ -94,7 +95,7 @@ fun SettingsScreen(
                     start = metrics.horizontalPadding,
                     end = metrics.horizontalPadding,
                     top = metrics.verticalPadding,
-                    bottom = metrics.verticalPadding * 2
+                    bottom = 0.dp
                 ),
             verticalArrangement = Arrangement.spacedBy(metrics.sectionSpacing)
         ) {

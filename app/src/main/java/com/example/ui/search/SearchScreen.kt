@@ -23,7 +23,9 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import com.example.R
 import com.example.data.model.MemoryWithDetails
 import com.example.ui.components.MemoryCard
 import com.example.ui.utils.CategoryRegistry
@@ -44,6 +46,7 @@ fun SearchScreen(
     val metrics = LocalResponsiveMetrics.current
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0.dp),
         topBar = {
             Column(
                 modifier = Modifier
@@ -59,26 +62,38 @@ fun SearchScreen(
                     color = MaterialTheme.colorScheme.onSurface
                 )
 
-                // High-End Search Input Bar (Filled with rounded corner M3 style)
+                // High-End Search Input Bar (Pill shape with cyan tint and crisp typography)
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { viewModel.searchQuery.value = it },
                     placeholder = { 
                         Text(
-                            text = LanguageUtils.getString("search_hint", language),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            text = "Search memories, documents, money, parking...",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
                         ) 
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = metrics.searchBarHeight)
+                        .heightIn(min = 54.dp)
                         .testTag("search_query_input"),
                     leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.Search, 
-                            contentDescription = "Search",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
+                        Box(
+                            modifier = Modifier
+                                .padding(start = 6.dp)
+                                .size(34.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Search, 
+                                contentDescription = "Search",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     },
                     trailingIcon = {
                         if (searchQuery.isNotEmpty()) {
@@ -86,18 +101,20 @@ fun SearchScreen(
                                 Icon(
                                     imageVector = Icons.Default.Clear, 
                                     contentDescription = "Clear search",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    tint = MaterialTheme.colorScheme.primary
                                 )
                             }
                         }
                     },
                     singleLine = true,
-                    shape = RoundedCornerShape(metrics.cardCornerRadius),
+                    shape = RoundedCornerShape(27.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.24f),
-                        focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.12f),
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.12f)
+                        unfocusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.28f),
+                        focusedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.18f),
+                        focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                        unfocusedTextColor = MaterialTheme.colorScheme.onSurface
                     )
                 )
 
@@ -148,8 +165,10 @@ fun SearchScreen(
                 .padding(paddingValues)
                 .testTag("search_results_lazy_column"),
             contentPadding = PaddingValues(
-                horizontal = metrics.horizontalPadding,
-                vertical = metrics.verticalPadding
+                start = metrics.horizontalPadding,
+                end = metrics.horizontalPadding,
+                top = metrics.verticalPadding,
+                bottom = 0.dp
             ),
             verticalArrangement = Arrangement.spacedBy(metrics.gridSpacing)
         ) {
@@ -203,11 +222,12 @@ fun SearchScreen(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.Center
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.SearchOff,
-                                contentDescription = "No search results",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
-                                modifier = Modifier.size(54.dp)
+                            Image(
+                                painter = painterResource(id = R.drawable.img_onboarding_hero),
+                                contentDescription = "No memories found artwork",
+                                modifier = Modifier
+                                    .size(100.dp)
+                                    .clip(RoundedCornerShape(16.dp))
                             )
                             Spacer(modifier = Modifier.height(16.dp))
                             Text(

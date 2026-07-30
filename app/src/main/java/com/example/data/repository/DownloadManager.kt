@@ -247,6 +247,18 @@ class DownloadManager(private val context: Context) {
                 return
             }
 
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                if (!context.packageManager.canRequestPackageInstalls()) {
+                    Toast.makeText(context, "Please allow 'Install Unknown Apps' permission for Forgot App to update.", Toast.LENGTH_LONG).show()
+                    val settingsIntent = Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                        data = Uri.parse("package:${context.packageName}")
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(settingsIntent)
+                    return
+                }
+            }
+
             val authority = "${context.packageName}.fileprovider"
             val apkUri: Uri = FileProvider.getUriForFile(context, authority, file)
 

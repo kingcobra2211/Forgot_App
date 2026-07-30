@@ -27,7 +27,8 @@ class MemoryRepository(
         memoryDao.updateMemory(memory)
     }
 
-    suspend fun deleteMemory(memory: Memory) {
+    suspend fun deleteMemory(memory: Memory) = database.withTransaction {
+        clearAllDetailsForMemory(memory.id)
         memoryDao.deleteMemory(memory)
     }
 
@@ -71,8 +72,7 @@ class MemoryRepository(
     }
 
     suspend fun emptyTrash() {
-        memoryDao.emptyTrash()
-    }
+        memoryDao.emptyTrash()    }
 
     suspend fun clearAll() {
         memoryDao.clearAll()

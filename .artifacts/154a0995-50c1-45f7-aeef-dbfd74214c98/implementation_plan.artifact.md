@@ -1,4 +1,5 @@
 # Implementation Plan - Complete Responsive UI Audit & Polish
+Complete Responsive UI Audit & Polish
 
 This plan addresses layout, alignment, and adaptive issues across the **entire application**. I will perform a comprehensive audit of every screen to ensure strict adherence to Material Design 3, responsive spacing, and device-independent typography.
 
@@ -52,6 +53,10 @@ This plan addresses layout, alignment, and adaptive issues across the **entire a
 - Run `./gradlew :app:compileDebugKotlin`.
 
 ### Manual Verification (The "Universal Standard" Check)
+- **Compact Phone + 3-Button Nav**: No clipping, Bottom Bar 100% visible.
+- **Compact Phone + Gesture Nav**: Bottom Bar 100% visible, no overlap with indicator.
+- **Tablet / Foldable**: Navigation Rail appears, layouts expand into grids.
+- **Landscape**: Ensure scroll states and spacing remain balanced### Manual Verification (The "Universal Standard" Check)
 - **Compact Phone + 3-Button Nav**: No clipping, Bottom Bar 100% visible.
 - **Compact Phone + Gesture Nav**: Bottom Bar 100% visible, no overlap with indicator.
 - **Tablet / Foldable**: Navigation Rail appears, layouts expand into grids.

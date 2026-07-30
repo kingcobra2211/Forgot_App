@@ -9,10 +9,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import java.text.SimpleDateFormat
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -21,6 +21,9 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import com.example.R
 import com.example.data.model.MemoryWithDetails
 import com.example.ui.components.MemoryCard
 import com.example.ui.utils.LanguageUtils
@@ -73,20 +76,71 @@ fun RemindersScreen(
 
     val (missedReminders, todayReminders, upcomingReminders) = groupedReminders
 
+    val haptic = LocalHapticFeedback.current
+    var isCalendarView by remember { mutableStateOf(false) }
+    var selectedCalDay by remember { mutableStateOf(Calendar.getInstance()) }
+
+    val selectedDayMemories = remember(activeReminders, selectedCalDay) {
+        val cal = Calendar.getInstance()
+        activeReminders.filter { item ->
+            val remDate = item.memory.reminderDate
+            if (remDate != null) {
+                cal.timeInMillis = remDate
+                cal.get(Calendar.YEAR) == selectedCalDay.get(Calendar.YEAR) &&
+                cal.get(Calendar.DAY_OF_YEAR) == selectedCalDay.get(Calendar.DAY_OF_YEAR)
+            } else false
+        }
+    }
+
     Scaffold(
+        contentWindowInsets = WindowInsets(0.dp),
         topBar = {
-            TopAppBar(
-                title = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.background)
+                    .padding(horizontal = metrics.horizontalPadding, vertical = metrics.verticalPadding)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(
                         text = LanguageUtils.getString("reminders_tab", language),
                         fontWeight = FontWeight.Black,
                         style = MaterialTheme.typography.titleLarge
                     )
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
-                )
-            )
+
+                    // View Mode Toggle
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                            .padding(4.dp)
+                    ) {
+                        FilterChip(
+                            selected = !isCalendarView,
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                isCalendarView = false
+                            },
+                            label = { Text("List") },
+                            leadingIcon = { Icon(Icons.Default.List, contentDescription = "List View", modifier = Modifier.size(16.dp)) }
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        FilterChip(
+                            selected = isCalendarView,
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                isCalendarView = true
+                            },
+                            label = { Text("Calendar") },
+                            leadingIcon = { Icon(Icons.Default.DateRange, contentDescription = "Calendar View", modifier = Modifier.size(16.dp)) }
+                        )
+                    }
+                }
+            }
         }
     ) { paddingValues ->
         if (activeReminders.isEmpty()) {
@@ -112,20 +166,13 @@ fun RemindersScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center
                     ) {
-                        Box(
+                        Image(
+                            painter = painterResource(id = R.drawable.img_onboarding_hero),
+                            contentDescription = "No reminders active artwork",
                             modifier = Modifier
-                                .size(64.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.NotificationsNone,
-                                contentDescription = "No reminders active",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(32.dp)
-                            )
-                        }
+                                .size(110.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                        )
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
                             text = "No active reminders",
@@ -152,6 +199,97 @@ fun RemindersScreen(
                     }
                 }
             }
+        } else if (isCalendarView) {
+            // CALENDAR VIEW MODE
+            val monthFormat = remember { SimpleDateFormat("MMMM yyyy", Locale.getDefault()) }
+            val currentMonthStr = remember(selectedCalDay) { monthFormat.format(selectedCalDay.time) }
+
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues),
+                contentPadding = PaddingValues(start = metrics.horizontalPadding, end = metrics.horizontalPadding, top = 8.dp, bottom = 0.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.16f)),
+                        shape = RoundedCornerShape(metrics.cardCornerRadius)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(currentMonthStr, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                Row {
+                                    IconButton(onClick = {
+                                        val cal = selectedCalDay.clone() as Calendar
+                                        cal.add(Calendar.MONTH, -1)
+                                        selectedCalDay = cal
+                                    }) {
+                                        Icon(Icons.Default.ChevronLeft, contentDescription = "Prev month")
+                                    }
+                                    IconButton(onClick = {
+                                        val cal = selectedCalDay.clone() as Calendar
+                                        cal.add(Calendar.MONTH, 1)
+                                        selectedCalDay = cal
+                                    }) {
+                                        Icon(Icons.Default.ChevronRight, contentDescription = "Next month")
+                                    }
+                                }
+                            }
+
+                            // Day of week headers
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
+                                listOf("S", "M", "T", "W", "T", "F", "S").forEach { day ->
+                                    Text(day, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                item {
+                    Text(
+                        text = "Reminders on ${SimpleDateFormat("EEE, dd MMM yyyy", Locale.getDefault()).format(selectedCalDay.time)} (${selectedDayMemories.size})",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                if (selectedDayMemories.isEmpty()) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(24.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("No reminders for selected day.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                } else {
+                    items(selectedDayMemories) { memoryWithDetails ->
+                        val memory = memoryWithDetails.memory
+                        MemoryCard(
+                            memoryWithDetails = memoryWithDetails,
+                            language = language,
+                            onEdit = { onNavigateToRemember(memory.id, null) },
+                            onPinToggle = { pinned -> viewModel.pinMemory(memory, pinned) },
+                            onFavoriteToggle = { fav -> viewModel.favoriteMemory(memory, fav) },
+                            onArchiveToggle = { viewModel.archiveMemory(memory) },
+                            onDelete = { viewModel.moveMemoryToTrash(memory) }
+                        )
+                    }
+                }
+            }
         } else {
             LazyColumn(
                 modifier = Modifier
@@ -159,8 +297,10 @@ fun RemindersScreen(
                     .padding(paddingValues)
                     .testTag("reminders_lazy_column"),
                 contentPadding = PaddingValues(
-                    horizontal = metrics.horizontalPadding,
-                    vertical = metrics.verticalPadding
+                    start = metrics.horizontalPadding,
+                    end = metrics.horizontalPadding,
+                    top = metrics.verticalPadding,
+                    bottom = 0.dp
                 ),
                 verticalArrangement = Arrangement.spacedBy(metrics.gridSpacing)
             ) {
@@ -203,6 +343,12 @@ fun RemindersScreen(
                             onUpdatePaidStatus = { paid ->
                                 val updatedDetail = memoryWithDetails.moneyDetail?.copy(status = if (paid) "Returned" else "Pending")
                                 viewModel.saveMemory(memory, updatedDetail)
+                            },
+                            onSnoozeReminder = {
+                                viewModel.updateMemory(memory.copy(reminderDate = (memory.reminderDate ?: System.currentTimeMillis()) + 24 * 60 * 60 * 1000L))
+                            },
+                            onClearReminder = {
+                                viewModel.updateMemory(memory.copy(reminderDate = null))
                             }
                         )
                     }
@@ -268,6 +414,12 @@ fun RemindersScreen(
                             onUpdatePaidStatus = { paid ->
                                 val updatedDetail = memoryWithDetails.moneyDetail?.copy(status = if (paid) "Returned" else "Pending")
                                 viewModel.saveMemory(memory, updatedDetail)
+                            },
+                            onSnoozeReminder = {
+                                viewModel.updateMemory(memory.copy(reminderDate = (memory.reminderDate ?: System.currentTimeMillis()) + 24 * 60 * 60 * 1000L))
+                            },
+                            onClearReminder = {
+                                viewModel.updateMemory(memory.copy(reminderDate = null))
                             }
                         )
                     }
@@ -333,6 +485,12 @@ fun RemindersScreen(
                             onUpdatePaidStatus = { paid ->
                                 val updatedDetail = memoryWithDetails.moneyDetail?.copy(status = if (paid) "Returned" else "Pending")
                                 viewModel.saveMemory(memory, updatedDetail)
+                            },
+                            onSnoozeReminder = {
+                                viewModel.updateMemory(memory.copy(reminderDate = (memory.reminderDate ?: System.currentTimeMillis()) + 24 * 60 * 60 * 1000L))
+                            },
+                            onClearReminder = {
+                                viewModel.updateMemory(memory.copy(reminderDate = null))
                             }
                         )
                     }

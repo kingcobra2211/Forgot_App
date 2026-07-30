@@ -26,6 +26,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import com.example.R
 import com.example.data.model.MemoryWithDetails
 import com.example.ui.components.MemoryCard
 import com.example.ui.utils.CategoryRegistry
@@ -49,6 +52,16 @@ fun HomeScreen(
     val metrics = LocalResponsiveMetrics.current
     val isCompact = metrics.widthSizeClass == WindowWidthSizeClass.Compact
 
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val currentVersion = remember(context) {
+        try {
+            val pInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+            "v${pInfo.versionName ?: "1.0"}"
+        } catch (e: Exception) {
+            "v1.0"
+        }
+    }
+
     // Calculate dynamically sorted categories based on frequency of usage
     val categoryUsageCounts = remember(activeMemories) {
         activeMemories.groupBy { it.memory.category }.mapValues { it.value.size }
@@ -58,10 +71,9 @@ fun HomeScreen(
     }
 
     // Filter upcoming active reminders
-    val upcomingReminders = remember(activeMemories) {
+    val upcomingReminders = remember(reminders) {
         val now = System.currentTimeMillis()
-        activeMemories
-            .filter { it.memory.reminderDate != null && it.memory.reminderDate!! > now }
+        reminders.filter { (it.memory.reminderDate ?: 0) > now }
             .sortedBy { it.memory.reminderDate }
     }
 
@@ -73,7 +85,22 @@ fun HomeScreen(
         activeMemories.filter { !it.memory.isPinned }
     }
 
+    // Calculate expiring documents (within 30 days or already expired)
+    val expiringDocuments = remember(activeMemories) {
+        val now = System.currentTimeMillis()
+        val thirtyDays = 30L * 24 * 3600 * 1000
+        activeMemories.filter { item ->
+            val exp = item.documentDetail?.expiryDate
+            exp != null && (exp <= now + thirtyDays)
+        }
+    }
+
+    val pendingMoneyCount = remember(activeMemories) {
+        activeMemories.count { it.moneyDetail?.status?.equals("Pending", ignoreCase = true) == true }
+    }
+
     Scaffold(
+        contentWindowInsets = WindowInsets(0.dp),
         topBar = {
             Column(
                 modifier = Modifier
@@ -86,34 +113,31 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
-                        Text(
-                            text = LanguageUtils.getString("app_title", language),
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Black,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Text(
-                            text = LanguageUtils.getString("tagline", language),
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                        )
-                    }
-
-                    // Version Tag
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
-                            .padding(horizontal = metrics.horizontalPadding / 2, vertical = 6.dp)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Text(
-                            text = "v1.0 Pro",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Black,
-                            color = MaterialTheme.colorScheme.primary
+                        Image(
+                            painter = painterResource(id = R.drawable.ic_app_logo),
+                            contentDescription = "Forgot App Logo",
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(CircleShape)
                         )
+                        Column {
+                            Text(
+                                text = LanguageUtils.getString("app_title", language),
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Black,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = LanguageUtils.getString("tagline", language),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            )
+                        }
                     }
                 }
             }
@@ -131,7 +155,7 @@ fun HomeScreen(
                 start = metrics.horizontalPadding,
                 end = metrics.horizontalPadding,
                 top = metrics.verticalPadding,
-                bottom = metrics.verticalPadding * 2
+                bottom = 0.dp
             ),
             horizontalArrangement = Arrangement.spacedBy(metrics.gridSpacing),
             verticalArrangement = Arrangement.spacedBy(metrics.sectionSpacing)
@@ -159,38 +183,148 @@ fun HomeScreen(
                 }
             }
 
+            // 1. Document Expiry Alert Banner (If any document is expiring within 30 days)
+            if (expiringDocuments.isNotEmpty()) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFEF5350).copy(alpha = 0.14f)),
+                        shape = RoundedCornerShape(metrics.cardCornerRadius)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(imageVector = Icons.Default.Warning, contentDescription = "Expiry alert", tint = Color(0xFFD32F2F))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Document Expiry Alerts (${expiringDocuments.size})",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFD32F2F)
+                                )
+                            }
+                            expiringDocuments.forEach { doc ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { onNavigateToRemember(doc.memory.id, null) }
+                                        .padding(vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "${doc.memory.title} (${doc.documentDetail?.documentType ?: "Doc"})",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    val isExpired = (doc.documentDetail?.expiryDate ?: 0) < System.currentTimeMillis()
+                                    Text(
+                                        text = if (isExpired) "EXPIRED" else "Expiring Soon",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Black,
+                                        color = if (isExpired) Color(0xFFD32F2F) else Color(0xFFE65100)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 2. Memory Analytics Dashboard Card
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.16f)),
+                    shape = RoundedCornerShape(metrics.cardCornerRadius)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceAround,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("${activeMemories.size}", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary)
+                            Text("Total Memories", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("${upcomingReminders.size}", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black, color = Color(0xFF4CAF50))
+                            Text("Active Reminders", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("$pendingMoneyCount", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black, color = Color(0xFFFFA726))
+                            Text("Pending Money", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Surface(
                     onClick = onNavigateToSearch,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = metrics.searchBarHeight)
+                        .height(56.dp)
                         .testTag("home_search_bar_trigger"),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.12f)
-                    ),
-                    shape = RoundedCornerShape(metrics.cardCornerRadius),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    shape = RoundedCornerShape(28.dp),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
+                    )
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(horizontal = 16.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = "Search icon",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(
-                            text = LanguageUtils.getString("search_hint", language),
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.Normal,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Search,
+                                    contentDescription = "Search icon",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            Text(
+                                text = "Search memories, documents, money...",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.88f)
+                            )
+                        }
+                        
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Tune,
+                                contentDescription = "Filter",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier
+                                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                                    .size(16.dp)
+                            )
+                        }
                     }
                 }
             }
