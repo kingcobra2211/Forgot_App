@@ -206,8 +206,8 @@ class DownloadManager(private val context: Context) {
     }
 
     private fun updateProgress(bytesInSample: Long, sampleStartTime: Long) {
-        val total = totalBytes
         val downloaded = downloadedBytes
+        val total = if (totalBytes > 0) maxOf(totalBytes, downloaded) else 0L
         if (total <= 0) return
 
         val now = System.currentTimeMillis()
@@ -217,12 +217,13 @@ class DownloadManager(private val context: Context) {
             (bytesInSample / 1024.0) / (elapsed / 1000.0)
         } else 0.0
 
-        val remainingBytes = total - downloaded
-        val etaSeconds = if (speedKb > 0) {
-            (remainingBytes / (speedKb * 1024.0)).toLong()
+        val remainingBytes = (total - downloaded).coerceAtLeast(0L)
+        val etaSeconds = if (speedKb > 0 && remainingBytes > 0) {
+            (remainingBytes / (speedKb * 1024.0)).toLong().coerceAtLeast(0L)
         } else 0L
 
-        val progress = ((downloaded * 100) / total).toInt()
+        val rawProgress = ((downloaded * 100) / total).toInt()
+        val progress = rawProgress.coerceIn(0, 100)
 
         _state.value = DownloadState.Downloading(
             progress = progress,

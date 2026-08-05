@@ -382,12 +382,22 @@ fun MainAppCoordinator(
                         val route = if (id != null) "detail?memoryId=$id" else "remember?category=$category"
                         navController.navigate(route)
                     },
+                    onNavigateToAppVersion = {
+                        navController.navigate("app_version")
+                    },
                     onExportBackup = {
                         createDocumentLauncher.launch("forgot_backup_${System.currentTimeMillis()}.json")
                     },
                     onImportBackup = {
                         openDocumentLauncher.launch(arrayOf("application/json", "*/*"))
                     }
+                )
+            }
+
+            composable("app_version") {
+                com.example.ui.update.AppVersionScreen(
+                    viewModel = updateViewModel,
+                    onBack = { navController.popBackStack() }
                 )
             }
 
@@ -571,13 +581,6 @@ fun MainAppCoordinator(
         }
     }
         }
-    }
-
-    if (isUpdateAvailable) {
-        com.example.ui.components.UpdateDialog(
-            viewModel = updateViewModel,
-            onDismiss = { updateViewModel.dismissUpdateDialog() }
-        )
     }
 }
 

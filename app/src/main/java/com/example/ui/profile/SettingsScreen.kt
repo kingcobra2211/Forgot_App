@@ -42,6 +42,7 @@ fun SettingsScreen(
     viewModel: MemoryViewModel,
     updateViewModel: com.example.ui.viewmodel.UpdateViewModel,
     onNavigateToRemember: (memoryId: Int?, category: String?) -> Unit,
+    onNavigateToAppVersion: () -> Unit,
     onExportBackup: () -> Unit,
     onImportBackup: () -> Unit
 ) {
@@ -63,7 +64,6 @@ fun SettingsScreen(
     var showTrash by remember { mutableStateOf(false) }
 
     var showPrivacyDialog by remember { mutableStateOf(false) }
-    var showLicensesDialog by remember { mutableStateOf(false) }
     var showReleaseNotesDialog by remember { mutableStateOf(false) }
 
     val scrollState = rememberScrollState()
@@ -288,83 +288,7 @@ fun SettingsScreen(
                 }
             }
 
-            // 3. LANGUAGE SELECTOR SECTION
-            Column(verticalArrangement = Arrangement.spacedBy(metrics.itemSpacing)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Icon(imageVector = Icons.Default.Language, contentDescription = "Languages", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
-                    Text(
-                        text = LanguageUtils.getString("language", language),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Black
-                    )
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(metrics.itemSpacing)
-                ) {
-                    val isEnglish = language.lowercase() == "english"
-                    val isTelugu = language.lowercase() == "telugu"
-
-                    // English Card
-                    Card(
-                        onClick = { viewModel.updateLanguage("english") },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(metrics.cardCornerRadius / 1.25f),
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (isEnglish) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
-                        ),
-                        border = if (isEnglish) null else CardDefaults.outlinedCardBorder().copy(
-                            brush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.outline.copy(alpha = 0.08f))
-                        )
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(metrics.itemSpacing),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "English 🇺🇸",
-                                style = MaterialTheme.typography.bodyMedium.copy(fontSize = metrics.bodyFontSize),
-                                fontWeight = FontWeight.Bold,
-                                color = if (isEnglish) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-
-                    // Telugu Card
-                    Card(
-                        onClick = { viewModel.updateLanguage("telugu") },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(metrics.cardCornerRadius / 1.25f),
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (isTelugu) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
-                        ),
-                        border = if (isTelugu) null else CardDefaults.outlinedCardBorder().copy(
-                            brush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.outline.copy(alpha = 0.08f))
-                        )
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(metrics.itemSpacing),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "తెలుగు 🇮🇳",
-                                style = MaterialTheme.typography.bodyMedium.copy(fontSize = metrics.bodyFontSize),
-                                fontWeight = FontWeight.Bold,
-                                color = if (isTelugu) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-            }
-
-            // 4. BACKUP & RESTORE SECTION
+            // 3. BACKUP & RESTORE SECTION
             Column(verticalArrangement = Arrangement.spacedBy(metrics.itemSpacing)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Icon(imageVector = Icons.Default.CloudSync, contentDescription = "Sync", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
@@ -720,7 +644,10 @@ fun SettingsScreen(
                             }
 
                             Button(
-                                onClick = { updateViewModel.checkForUpdates(isAutoCheck = false) },
+                                onClick = { 
+                                    updateViewModel.checkForUpdates(isAutoCheck = false)
+                                    onNavigateToAppVersion()
+                                },
                                 enabled = !isCheckingUpdates,
                                 shape = RoundedCornerShape(10.dp),
                                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
@@ -818,17 +745,23 @@ fun SettingsScreen(
 
                         HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.08f))
 
-                        // Actions List: Release Notes, Privacy Policy, Licenses
+                        // Actions List: Release Notes, Privacy Policy, Licenses, App Version
                         Column(
                             modifier = Modifier.fillMaxWidth(),
                             verticalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
-                            // 1. View Release Notes with Update Badge
-                            val hasUpdate = latestReleaseInfo != null && 
-                                latestReleaseInfo?.tagName?.let { tag ->
-                                    !tag.equals(updateViewModel.currentVersion, ignoreCase = true)
-                                } ?: false
-                             
+                            val isUpdateAvailableState by updateViewModel.isUpdateAvailable.collectAsState()
+
+                            // 1. App Version & Update Status
+                            AboutListItem(
+                                icon = Icons.Default.Info,
+                                title = "App Version",
+                                subtitle = "Version ${updateViewModel.currentVersion} (Release Build)",
+                                onClick = onNavigateToAppVersion,
+                                showBadge = isUpdateAvailableState
+                            )
+
+                            // 2. View Release Notes
                             AboutListItem(
                                 icon = Icons.Default.Feed,
                                 title = "See What's New",
@@ -839,7 +772,7 @@ fun SettingsScreen(
                                     }
                                     showReleaseNotesDialog = true
                                 },
-                                showBadge = hasUpdate
+                                showBadge = false
                             )
 
                             // 3. Privacy Policy
@@ -848,14 +781,6 @@ fun SettingsScreen(
                                 title = "Privacy Policy",
                                 subtitle = "Our offline-first data safety commitment",
                                 onClick = { showPrivacyDialog = true }
-                            )
-
-                            // 4. Open Source Licenses
-                            AboutListItem(
-                                icon = Icons.Default.CollectionsBookmark,
-                                title = "Open Source Licenses",
-                                subtitle = "Third-party libraries powering the memory engine",
-                                onClick = { showLicensesDialog = true }
                             )
                         }
                     }
@@ -892,59 +817,6 @@ fun SettingsScreen(
             confirmButton = {
                 Button(onClick = { showPrivacyDialog = false }) {
                     Text("I Understand")
-                }
-            }
-        )
-    }
-
-    // Open Source Licenses Dialog
-    if (showLicensesDialog) {
-        AlertDialog(
-            onDismissRequest = { showLicensesDialog = false },
-            title = { Text("Open Source Licenses", fontWeight = FontWeight.Black) },
-            text = {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 280.dp)
-                        .verticalScroll(rememberScrollState())
-                ) {
-                    LicenseItem(
-                        library = "Jetpack Compose",
-                        author = "Google LLC",
-                        license = "Apache License 2.0"
-                    )
-                    LicenseItem(
-                        library = "Room Persistence Database",
-                        author = "Google LLC",
-                        license = "Apache License 2.0"
-                    )
-                    LicenseItem(
-                        library = "Retrofit REST Client",
-                        author = "Square Inc.",
-                        license = "Apache License 2.0"
-                    )
-                    LicenseItem(
-                        library = "OkHttp & Logging Interceptor",
-                        author = "Square Inc.",
-                        license = "Apache License 2.0"
-                    )
-                    LicenseItem(
-                        library = "Moshi JSON Parser",
-                        author = "Square Inc.",
-                        license = "Apache License 2.0"
-                    )
-                    LicenseItem(
-                        library = "Coil Image Loader",
-                        author = "Coil Contributors",
-                        license = "Apache License 2.0"
-                    )
-                }
-            },
-            confirmButton = {
-                Button(onClick = { showLicensesDialog = false }) {
-                    Text("Close")
                 }
             }
         )
@@ -1053,22 +925,5 @@ fun AboutListItem(
             tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
             modifier = Modifier.size(16.dp)
         )
-    }
-}
-
-@Composable
-fun LicenseItem(library: String, author: String, license: String) {
-    val metrics = LocalResponsiveMetrics.current
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(metrics.cardCornerRadius / 2))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f))
-            .padding(metrics.itemSpacing),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        Text(text = library, style = MaterialTheme.typography.bodyMedium.copy(fontSize = metrics.bodyFontSize), fontWeight = FontWeight.Bold)
-        Text(text = "Copyright © $author", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(text = "Licensed under $license", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.primary)
     }
 }
