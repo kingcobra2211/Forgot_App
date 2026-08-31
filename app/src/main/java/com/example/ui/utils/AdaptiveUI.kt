@@ -1,6 +1,5 @@
 package com.example.ui.utils
 
-import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
@@ -10,12 +9,16 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.platform.LocalConfiguration
 
+enum class AppWindowWidthClass {
+    Compact, Medium, Expanded
+}
+
 /**
  * Responsive metrics for device-independent UI.
- * Calculated based on WindowSizeClass to provide adaptive scaling.
+ * Calculated based on AppWindowWidthClass to provide adaptive scaling.
  */
 data class ResponsiveMetrics(
-    val widthSizeClass: WindowWidthSizeClass,
+    val widthSizeClass: AppWindowWidthClass,
     val horizontalPadding: Dp,
     val verticalPadding: Dp,
     val gridSpacing: Dp,
@@ -35,18 +38,22 @@ val LocalResponsiveMetrics = compositionLocalOf<ResponsiveMetrics> {
 
 @Composable
 fun ProvideResponsiveMetrics(
-    widthSizeClass: WindowWidthSizeClass,
+    widthSizeClass: AppWindowWidthClass? = null,
     content: @Composable () -> Unit
 ) {
     val configuration = LocalConfiguration.current
-    val widthScale = (configuration.screenWidthDp / 400f).coerceIn(0.84f, 1.12f)
+    val calculatedClass = widthSizeClass ?: when {
+        configuration.screenWidthDp < 600 -> AppWindowWidthClass.Compact
+        configuration.screenWidthDp < 840 -> AppWindowWidthClass.Medium
+        else -> AppWindowWidthClass.Expanded
+    }
+    val widthScale = (configuration.screenWidthDp / 400f).coerceIn(0.84f, 1.15f)
     val fontScale = widthScale.coerceAtLeast(1f)
-    val isShortScreen = configuration.screenHeightDp < 680
-    val verticalScale = if (isShortScreen) 0.82f else 1f
+    val verticalScale = (configuration.screenHeightDp / 720f).coerceIn(0.70f, 1.20f)
 
-    val metrics = when (widthSizeClass) {
-        WindowWidthSizeClass.Compact -> ResponsiveMetrics(
-            widthSizeClass = widthSizeClass,
+    val metrics = when (calculatedClass) {
+        AppWindowWidthClass.Compact -> ResponsiveMetrics(
+            widthSizeClass = calculatedClass,
             horizontalPadding = 16.dp * widthScale,
             verticalPadding = 12.dp * verticalScale,
             gridSpacing = 16.dp * verticalScale,
@@ -59,8 +66,8 @@ fun ProvideResponsiveMetrics(
             labelFontSize = 13.sp * fontScale,
             searchBarHeight = 56.dp * verticalScale
         )
-        WindowWidthSizeClass.Medium -> ResponsiveMetrics(
-            widthSizeClass = widthSizeClass,
+        AppWindowWidthClass.Medium -> ResponsiveMetrics(
+            widthSizeClass = calculatedClass,
             horizontalPadding = 24.dp * widthScale,
             verticalPadding = 16.dp * verticalScale,
             gridSpacing = 20.dp * verticalScale,
@@ -73,8 +80,8 @@ fun ProvideResponsiveMetrics(
             labelFontSize = 14.sp * fontScale,
             searchBarHeight = 64.dp * verticalScale
         )
-        WindowWidthSizeClass.Expanded -> ResponsiveMetrics(
-            widthSizeClass = widthSizeClass,
+        AppWindowWidthClass.Expanded -> ResponsiveMetrics(
+            widthSizeClass = calculatedClass,
             horizontalPadding = 32.dp * widthScale,
             verticalPadding = 24.dp * verticalScale,
             gridSpacing = 24.dp * verticalScale,
@@ -86,20 +93,6 @@ fun ProvideResponsiveMetrics(
             bodyFontSize = 18.sp * fontScale,
             labelFontSize = 15.sp * fontScale,
             searchBarHeight = 72.dp * verticalScale
-        )
-        else -> ResponsiveMetrics(
-            widthSizeClass = widthSizeClass,
-            horizontalPadding = 16.dp,
-            verticalPadding = 12.dp,
-            gridSpacing = 16.dp,
-            sectionSpacing = 24.dp,
-            itemSpacing = 12.dp,
-            cardCornerRadius = 16.dp,
-            iconScale = 1.0f,
-            titleFontSize = 18.sp,
-            bodyFontSize = 14.sp,
-            labelFontSize = 11.sp,
-            searchBarHeight = 56.dp
         )
     }
 

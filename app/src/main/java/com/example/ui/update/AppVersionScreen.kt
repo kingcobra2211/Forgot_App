@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.UpdateState
 import com.example.ui.utils.LocalResponsiveMetrics
+import com.example.ui.utils.buildFormattedReleaseNotes
 import com.example.ui.viewmodel.UpdateViewModel
 import java.text.SimpleDateFormat
 import java.util.*
@@ -37,7 +38,6 @@ fun AppVersionScreen(
     val currentVersion = viewModel.currentVersion
 
     Scaffold(
-        contentWindowInsets = WindowInsets(0.dp),
         topBar = {
             TopAppBar(
                 title = {
@@ -212,9 +212,8 @@ fun AppVersionScreen(
                                         .padding(12.dp)
                                 ) {
                                     val notesScroll = rememberScrollState()
-                                    val notes = release.body ?: "No release notes provided."
                                     Text(
-                                        text = cleanMarkdownNotes(notes),
+                                        text = buildFormattedReleaseNotes(release.body),
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.verticalScroll(notesScroll)
@@ -335,9 +334,8 @@ fun AppVersionScreen(
                                         .padding(12.dp)
                                 ) {
                                     val notesScroll = rememberScrollState()
-                                    val notes = release.body ?: "No release notes provided."
                                     Text(
-                                        text = cleanMarkdownNotes(notes),
+                                        text = buildFormattedReleaseNotes(release.body),
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.verticalScroll(notesScroll)

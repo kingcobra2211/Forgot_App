@@ -529,7 +529,54 @@ fun RememberScreen(
             }
 
             // ==========================================
-            // FLOW SECTION 2: DYNAMIC CATEGORY FIELDS
+            // FLOW SECTION 2: COMMON INFORMATION (Title & Description)
+            // ==========================================
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)
+                ),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    // Title
+                    OutlinedTextField(
+                        value = title,
+                        onValueChange = { title = it },
+                        label = { Text(LanguageUtils.getString("title_label", language) + " *") },
+                        placeholder = { Text("What would you like to remember?") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("remember_title_input"),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = activeCategoryColor,
+                            focusedLabelColor = activeCategoryColor
+                        )
+                    )
+
+                    // Description
+                    OutlinedTextField(
+                        value = description,
+                        onValueChange = { description = it },
+                        label = { Text(LanguageUtils.getString("description_label", language)) },
+                        placeholder = { Text("Add notes, descriptions, or visual cues...") },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 3,
+                        maxLines = 5,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = activeCategoryColor,
+                            focusedLabelColor = activeCategoryColor
+                        )
+                    )
+                }
+            }
+
+            // ==========================================
+            // FLOW SECTION 3: DYNAMIC CATEGORY FIELDS
             // ==========================================
             val isCustomCategory = category.lowercase() != "note"
             AnimatedVisibility(
@@ -868,188 +915,6 @@ fun RememberScreen(
                                         )
                                     }
                                 }
-                            }
-                            "money" -> {
-                                OutlinedTextField(
-                                    value = person,
-                                    onValueChange = { person = it },
-                                    label = { Text("Person Name *") },
-                                    placeholder = { Text("Friend, Vendor...") },
-                                    modifier = Modifier.fillMaxWidth().testTag("money_person_input"),
-                                    singleLine = true
-                                )
-                                OutlinedTextField(
-                                    value = amount,
-                                    onValueChange = { amount = it },
-                                    label = { Text("Amount *") },
-                                    placeholder = { Text("500") },
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    modifier = Modifier.fillMaxWidth().testTag("money_amount_input"),
-                                    singleLine = true
-                                )
-                            }
-                            "parking" -> {
-                                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    OutlinedTextField(
-                                        value = parkingFloor,
-                                        onValueChange = { parkingFloor = it },
-                                        label = { Text("Floor *") },
-                                        placeholder = { Text("B2, Floor 4...") },
-                                        modifier = Modifier.weight(1f).testTag("parking_floor_input"),
-                                        singleLine = true
-                                    )
-                                    OutlinedTextField(
-                                        value = parkingSlot,
-                                        onValueChange = { parkingSlot = it },
-                                        label = { Text("Slot *") },
-                                        placeholder = { Text("A34, 11...") },
-                                        modifier = Modifier.weight(1f).testTag("parking_slot_input"),
-                                        singleLine = true
-                                    )
-                                }
-                            }
-                            "document" -> {
-                                OutlinedTextField(
-                                    value = docType,
-                                    onValueChange = { docType = it },
-                                    label = { Text("Document Type *") },
-                                    placeholder = { Text("Passport, License, Aadhaar...") },
-                                    modifier = Modifier.fillMaxWidth().testTag("doc_type_input"),
-                                    singleLine = true
-                                )
-                                OutlinedTextField(
-                                    value = docNumber,
-                                    onValueChange = { docNumber = it },
-                                    label = { Text("Document Number *") },
-                                    placeholder = { Text("AXX991823...") },
-                                    modifier = Modifier.fillMaxWidth().testTag("doc_number_input"),
-                                    singleLine = true
-                                )
-                            }
-                            "shopping" -> {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    OutlinedTextField(
-                                        value = newChecklistItemText,
-                                        onValueChange = { newChecklistItemText = it },
-                                        placeholder = { Text("Add checklist/shopping item...") },
-                                        modifier = Modifier.weight(1f).testTag("shopping_item_input"),
-                                        singleLine = true
-                                    )
-                                    Button(
-                                        onClick = {
-                                            if (newChecklistItemText.trim().isNotEmpty()) {
-                                                checklistItems.add(Pair(newChecklistItemText.trim(), false))
-                                                newChecklistItemText = ""
-                                            }
-                                        },
-                                        colors = ButtonDefaults.buttonColors(containerColor = activeCategoryColor)
-                                    ) {
-                                        Icon(imageVector = Icons.Default.Add, contentDescription = "Add Item")
-                                    }
-                                }
-
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))
-                                        .padding(8.dp),
-                                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    if (checklistItems.isEmpty()) {
-                                        Text(
-                                            text = "No items in list yet * (Add at least one)",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                            modifier = Modifier.padding(8.dp)
-                                        )
-                                    } else {
-                                        checklistItems.forEachIndexed { index, pair ->
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.SpaceBetween
-                                            ) {
-                                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    Checkbox(
-                                                        checked = pair.second,
-                                                        onCheckedChange = { checked ->
-                                                            checklistItems[index] = pair.copy(second = checked)
-                                                        }
-                                                    )
-                                                    Text(text = pair.first, style = MaterialTheme.typography.bodyMedium)
-                                                }
-                                                IconButton(
-                                                    onClick = { checklistItems.removeAt(index) },
-                                                    modifier = Modifier.size(36.dp)
-                                                ) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.Close,
-                                                        contentDescription = "Remove item",
-                                                        tint = Color(0xFFEF5350)
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            "medicine" -> {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))
-                                        .padding(12.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text("Morning ☀️", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
-                                        Checkbox(checked = medicineDoseMorning, onCheckedChange = { medicineDoseMorning = it })
-                                    }
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text("Afternoon 🌤️", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
-                                        Checkbox(checked = medicineDoseAfternoon, onCheckedChange = { medicineDoseAfternoon = it })
-                                    }
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text("Night 🌙", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
-                                        Checkbox(checked = medicineDoseNight, onCheckedChange = { medicineDoseNight = it })
-                                    }
-                                }
-                            }
-                            "place" -> {
-                                OutlinedTextField(
-                                    value = locationText,
-                                    onValueChange = { locationText = it },
-                                    label = { Text("Address / Location Spot *") },
-                                    placeholder = { Text("123 Main St, Seattle...") },
-                                    modifier = Modifier.fillMaxWidth().testTag("place_location_input"),
-                                    singleLine = true
-                                )
-                            }
-                            "gift idea" -> {
-                                OutlinedTextField(
-                                    value = person,
-                                    onValueChange = { person = it },
-                                    label = { Text("Recipient Name *") },
-                                    placeholder = { Text("Mom, Dad, Friend...") },
-                                    modifier = Modifier.fillMaxWidth().testTag("gift_recipient_input"),
-                                    singleLine = true
-                                )
-                            }
-                            "wishlist" -> {
-                                OutlinedTextField(
-                                    value = wishProduct,
-                                    onValueChange = { wishProduct = it },
-                                    label = { Text("Product / Item Name *") },
-                                    placeholder = { Text("iPhone 16, New Shoes...") },
-                                    modifier = Modifier.fillMaxWidth().testTag("wish_product_input"),
-                                    singleLine = true
-                                )
                             }
                         }
 
@@ -1428,52 +1293,7 @@ fun RememberScreen(
                 }
             }
 
-            // ==========================================
-            // FLOW SECTION 3: COMMON INFORMATION (No Header Title)
-            // ==========================================
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)
-                ),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    // Title
-                    OutlinedTextField(
-                        value = title,
-                        onValueChange = { title = it },
-                        label = { Text(LanguageUtils.getString("title_label", language) + " *") },
-                        placeholder = { Text("What would you like to remember?") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("remember_title_input"),
-                        singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = activeCategoryColor,
-                            focusedLabelColor = activeCategoryColor
-                        )
-                    )
 
-                    // Description
-                    OutlinedTextField(
-                        value = description,
-                        onValueChange = { description = it },
-                        label = { Text(LanguageUtils.getString("description_label", language)) },
-                        placeholder = { Text("Add notes, descriptions, or visual cues...") },
-                        modifier = Modifier.fillMaxWidth(),
-                        minLines = 3,
-                        maxLines = 5,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = activeCategoryColor,
-                            focusedLabelColor = activeCategoryColor
-                        )
-                    )
-                }
-            }
 
             // ==========================================
             // FLOW SECTION 4: REMINDER (Once vs Daily)
@@ -1988,6 +1808,38 @@ fun RememberScreen(
                             title = "Remember $category"
                         }
 
+                        // Input validations per category
+                        when (category.lowercase()) {
+                            "money" -> {
+                                if (person.trim().isEmpty()) {
+                                    Toast.makeText(context, "Please enter the person's name", Toast.LENGTH_SHORT).show()
+                                    return@Button
+                                }
+                                if (amount.trim().isNotEmpty() && amount.trim().toDoubleOrNull() == null) {
+                                    Toast.makeText(context, "Please enter a valid numeric amount", Toast.LENGTH_SHORT).show()
+                                    return@Button
+                                }
+                            }
+                            "parking" -> {
+                                if (parkingFloor.trim().isEmpty() && parkingSlot.trim().isEmpty() && locationText.trim().isEmpty()) {
+                                    Toast.makeText(context, "Please provide floor, slot, or parking location details", Toast.LENGTH_SHORT).show()
+                                    return@Button
+                                }
+                            }
+                            "document" -> {
+                                if (docNumber.trim().isEmpty()) {
+                                    Toast.makeText(context, "Please enter the document number", Toast.LENGTH_SHORT).show()
+                                    return@Button
+                                }
+                            }
+                        }
+
+                        // Reminder Date Validation
+                        if (reminderTimestamp != null && reminderTimestamp!! <= System.currentTimeMillis() && !isDailyReminder) {
+                            Toast.makeText(context, "Reminder time is in the past. Please select a future time.", Toast.LENGTH_LONG).show()
+                            return@Button
+                        }
+
                         // Build memory object
                         val memory = Memory(
                             id = existingMemory?.id ?: 0,
@@ -2002,7 +1854,7 @@ fun RememberScreen(
                             location = if (category.lowercase() == "parking" || category.lowercase() == "place") locationText.trim().ifEmpty { null } else null,
                             latitude = existingMemory?.latitude,
                             longitude = existingMemory?.longitude,
-                            photoPath = if (category.lowercase() in listOf("note", "shopping", "gift idea")) photoPathState else null,
+                            photoPath = photoPathState,
                             voicePath = voiceFilePath,
                             attachmentPaths = attachmentPaths.joinToString("\n"),
                             isPinned = isPinned,
@@ -2043,7 +1895,7 @@ fun RememberScreen(
                             "shopping" -> ShoppingDetail(
                                 memoryId = memory.id,
                                 store = shoppingStore.trim(),
-                                shoppingItems = checklistItems.joinToString("\n") { "${it.first}|${it.second}" },
+                                shoppingItems = checklistItems.joinToString("\n") { "${it.first.replace("|", "/")}|${it.second}" },
                                 budget = shoppingBudget.trim().toDoubleOrNull(),
                                 completed = existingMemoryWithDetails?.shoppingDetail?.completed ?: false,
                                 purchaseDate = existingMemoryWithDetails?.shoppingDetail?.purchaseDate
@@ -2190,7 +2042,7 @@ fun AttachmentPickerRow(
 }
 
 private fun isDefaultTitle(title: String): Boolean {
-    return title.trim().lowercase() in setOf("car parking location", "daily medicine reminders", "shopping items", "")
+    return title.trim().isEmpty()
 }
 
 private fun updateDefaultTitle(category: String, onTitleUpdate: (String) -> Unit) {

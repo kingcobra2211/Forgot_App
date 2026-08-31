@@ -5,4 +5,8 @@
     
     <!-- For installing downloaded OTA updates from private files directory -->
     <files-path name="ota_updates" path="updates/" />
+
+    <!-- For attachments, camera photos, and exported files from private files directory -->
+    <files-path name="attachments" path="attachments/" />
+    <files-path name="all_files" path="." />
 </paths>

@@ -1,6 +1,7 @@
 package com.example.ui.utils
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -16,7 +17,7 @@ object CategoryRegistry {
     val categories = listOf(
         CategoryItem(
             name = "Note",
-            icon = Icons.Default.StickyNote2,
+            icon = Icons.AutoMirrored.Filled.StickyNote2,
             color = Color(0xFF42A5F5), // Bright Blue
             descriptionKey = "Simple remember"
         ),
@@ -72,6 +73,6 @@ object CategoryRegistry {
 
     fun getCategoryItem(name: String): CategoryItem {
         return categories.firstOrNull { it.name.lowercase() == name.lowercase() }
-            ?: CategoryItem(name, Icons.Default.StickyNote2, Color(0xFF78909C), "Simple note")
+            ?: CategoryItem(name, Icons.AutoMirrored.Filled.StickyNote2, Color(0xFF78909C), "Simple note")
     }
 }

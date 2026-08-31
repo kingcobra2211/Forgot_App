@@ -12,6 +12,9 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.example.MainActivity
 import com.example.data.model.Memory
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class ReminderScheduler(private val context: Context) {
 
@@ -70,7 +73,19 @@ class ReminderScheduler(private val context: Context) {
     }
 
     fun cancel(memoryId: Int) {
-        alarmManager?.cancel(reminderPendingIntent(memoryId))
+        try {
+            val intent = Intent(context, ReminderReceiver::class.java)
+            val pendingIntent = PendingIntent.getBroadcast(
+                context,
+                memoryId,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            alarmManager?.cancel(pendingIntent)
+            pendingIntent.cancel()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     private fun reminderPendingIntent(memory: Memory, isDaily: Boolean = false, scheduledTime: Long = 0L): PendingIntent {
@@ -89,18 +104,6 @@ class ReminderScheduler(private val context: Context) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
     }
-
-    private fun reminderPendingIntent(memoryId: Int): PendingIntent = PendingIntent.getBroadcast(
-        context,
-        memoryId,
-        Intent(context, ReminderReceiver::class.java),
-        PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
-    ) ?: PendingIntent.getBroadcast(
-        context,
-        memoryId,
-        Intent(context, ReminderReceiver::class.java),
-        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-    )
 }
 
 class ReminderReceiver : BroadcastReceiver() {
@@ -136,10 +139,12 @@ class ReminderReceiver : BroadcastReceiver() {
         )
 
         val notificationBuilder = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(if (isMedicine) android.R.drawable.ic_dialog_alert else android.R.drawable.ic_popup_reminder)
+            .setSmallIcon(com.example.R.drawable.ic_app_logo)
             .setContentTitle(finalTitle)
             .setContentText(finalDescription)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
 
@@ -175,16 +180,36 @@ class ReminderReceiver : BroadcastReceiver() {
         // Auto Reschedule for Tomorrow (+24 Hours) if Daily Repeat
         if (isDaily && memoryId != 0) {
             val nextTime = if (scheduledTime > 0) scheduledTime + 86400000L else System.currentTimeMillis() + 86400000L
-            val dummyMemory = Memory(
-                id = memoryId,
-                title = title,
-                description = description,
-                category = category,
-                reminderDate = nextTime,
-                photoPath = photoPath,
-                status = "Active"
-            )
-            ReminderScheduler(context).schedule(dummyMemory, isDaily = true)
+            val pendingResult = goAsync()
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                try {
+                    val db = com.example.data.database.AppDatabase.getDatabase(context)
+                    val memoryWithDetails = db.memoryDao().getMemoryById(memoryId)
+                    if (memoryWithDetails != null) {
+                        val updatedMemory = memoryWithDetails.memory.copy(
+                            reminderDate = nextTime,
+                            updatedDate = System.currentTimeMillis()
+                        )
+                        db.memoryDao().updateMemory(updatedMemory)
+                        ReminderScheduler(context).schedule(updatedMemory, isDaily = true)
+                    } else {
+                        val dummyMemory = Memory(
+                            id = memoryId,
+                            title = title,
+                            description = description,
+                            category = category,
+                            reminderDate = nextTime,
+                            photoPath = photoPath,
+                            status = "Active"
+                        )
+                        ReminderScheduler(context).schedule(dummyMemory, isDaily = true)
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                } finally {
+                    pendingResult.finish()
+                }
+            }
         }
     }
 

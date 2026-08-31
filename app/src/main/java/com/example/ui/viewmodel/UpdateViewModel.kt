@@ -89,6 +89,7 @@ class UpdateViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun checkForUpdates(isAutoCheck: Boolean = false) {
+        if (_isCheckingUpdates.value) return
         viewModelScope.launch {
             _isCheckingUpdates.value = true
             _updateState.value = UpdateState.Checking
@@ -145,6 +146,7 @@ class UpdateViewModel(application: Application) : AndroidViewModel(application) 
                     }
                 }
             }.onFailure { exception ->
+                _isUpdateAvailable.value = false
                 val errorMsg = exception.localizedMessage ?: "Failed to fetch update info from server."
                 _updateState.value = UpdateState.Error(errorMsg)
                 if (!isAutoCheck) {

@@ -15,6 +15,10 @@ import androidx.core.content.ContextCompat
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import com.example.ui.update.AppVersionScreen
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Image
@@ -65,6 +69,11 @@ import com.example.ui.utils.ProvideResponsiveMetrics
 import com.example.ui.viewmodel.MemoryViewModel
 
 class MainActivity : ComponentActivity() {
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+    }
+
     @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -74,10 +83,9 @@ class MainActivity : ComponentActivity() {
             val updateViewModel: com.example.ui.viewmodel.UpdateViewModel = viewModel()
             val themeKey by viewModel.themeKey.collectAsState()
             val language by viewModel.language.collectAsState()
-            val windowSizeClass = calculateWindowSizeClass(this)
 
             ForgotTheme(themeKey = themeKey) {
-                ProvideResponsiveMetrics(widthSizeClass = windowSizeClass.widthSizeClass) {
+                ProvideResponsiveMetrics {
                     MainAppCoordinator(
                         viewModel = viewModel,
                         updateViewModel = updateViewModel,
@@ -100,7 +108,7 @@ fun MainAppCoordinator(
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
     val metrics = LocalResponsiveMetrics.current
-    val isCompact = metrics.widthSizeClass == androidx.compose.material3.windowsizeclass.WindowWidthSizeClass.Compact
+    val isCompact = metrics.widthSizeClass == com.example.ui.utils.AppWindowWidthClass.Compact
 
     var showQuickAddDialog by remember { mutableStateOf(false) }
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
@@ -108,6 +116,8 @@ fun MainAppCoordinator(
     ) { }
 
     var isSplashActive by remember { mutableStateOf(true) }
+
+    var pendingMemoryId by remember { mutableStateOf<Int?>(null) }
 
     LaunchedEffect(Unit) {
         kotlinx.coroutines.delay(1800)
@@ -122,14 +132,44 @@ fun MainAppCoordinator(
             notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
         }
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = android.app.NotificationChannel(
+                "forgot_memory_reminders",
+                "Memory reminders",
+                android.app.NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Notifications for memory and medicine reminders"
+                enableVibration(true)
+                enableLights(true)
+                setShowBadge(true)
+            }
+            context.getSystemService(android.app.NotificationManager::class.java)?.createNotificationChannel(channel)
+        }
+
         val activity = context as? ComponentActivity
         val targetMemoryId = activity?.intent?.getIntExtra(com.example.data.repository.ReminderReceiver.EXTRA_MEMORY_ID, 0) ?: 0
         if (targetMemoryId != 0) {
             activity?.intent?.removeExtra(com.example.data.repository.ReminderReceiver.EXTRA_MEMORY_ID)
-            navController.navigate("remember?memoryId=$targetMemoryId")
+            pendingMemoryId = targetMemoryId
+        }
+    }
+
+    LaunchedEffect(pendingMemoryId, isSplashActive) {
+        val id = pendingMemoryId
+        if (id != null && !isSplashActive) {
+            kotlinx.coroutines.delay(150)
+            try {
+                if (navController.currentDestination != null) {
+                    navController.navigate("detail?memoryId=$id")
+                    pendingMemoryId = null
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
     val isUpdateAvailable by updateViewModel.isUpdateAvailable.collectAsState()
+    var isNotificationBannerDismissed by remember { mutableStateOf(false) }
 
     // ... (rest of the setup logic remains same)
     val createDocumentLauncher = rememberLauncherForActivityResult(
@@ -335,19 +375,25 @@ fun MainAppCoordinator(
                 }
             }
         ) { innerPadding ->
-            NavHost(
-                navController = navController,
-                startDestination = "home",
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
             ) {
+                NavHost(
+                    navController = navController,
+                    startDestination = "home",
+                    modifier = Modifier.fillMaxSize()
+                ) {
             composable("home") {
                 HomeScreen(
                     viewModel = viewModel,
                     onNavigateToRemember = { id, category ->
                         val route = if (id != null) "detail?memoryId=$id" else "remember?category=$category"
                         navController.navigate(route)
+                    },
+                    onNavigateToDetail = { id ->
+                        navController.navigate("detail?memoryId=$id")
                     },
                     onNavigateToSearch = { navController.navigate("search") },
                     onNavigateToReminders = { navController.navigate("reminders") }
@@ -382,20 +428,38 @@ fun MainAppCoordinator(
                         val route = if (id != null) "detail?memoryId=$id" else "remember?category=$category"
                         navController.navigate(route)
                     },
-                    onNavigateToAppVersion = {
-                        navController.navigate("app_version")
-                    },
+                    onNavigateToAppVersion = { navController.navigate("app_version") },
                     onExportBackup = {
-                        createDocumentLauncher.launch("forgot_backup_${System.currentTimeMillis()}.json")
+                        val fileName = "Forgot_App_Backup_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())}.json"
+                        createDocumentLauncher.launch(fileName)
                     },
                     onImportBackup = {
-                        openDocumentLauncher.launch(arrayOf("application/json", "*/*"))
+                        openDocumentLauncher.launch(arrayOf("application/json"))
+                    }
+                )
+            }
+
+            composable("profile") {
+                SettingsScreen(
+                    viewModel = viewModel,
+                    updateViewModel = updateViewModel,
+                    onNavigateToRemember = { id, category ->
+                        val route = if (id != null) "detail?memoryId=$id" else "remember?category=$category"
+                        navController.navigate(route)
+                    },
+                    onNavigateToAppVersion = { navController.navigate("app_version") },
+                    onExportBackup = {
+                        val fileName = "Forgot_App_Backup_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())}.json"
+                        createDocumentLauncher.launch(fileName)
+                    },
+                    onImportBackup = {
+                        openDocumentLauncher.launch(arrayOf("application/json"))
                     }
                 )
             }
 
             composable("app_version") {
-                com.example.ui.update.AppVersionScreen(
+                AppVersionScreen(
                     viewModel = updateViewModel,
                     onBack = { navController.popBackStack() }
                 )
@@ -403,14 +467,9 @@ fun MainAppCoordinator(
 
             composable(
                 route = "detail?memoryId={memoryId}",
-                arguments = listOf(
-                    navArgument("memoryId") {
-                        type = NavType.IntType
-                        defaultValue = 0
-                    }
-                )
+                arguments = listOf(navArgument("memoryId") { type = NavType.IntType })
             ) { backStackEntry ->
-                val memoryId = backStackEntry.arguments?.getInt("memoryId") ?: 0
+                val memoryId = backStackEntry.arguments?.getInt("memoryId") ?: return@composable
                 MemoryDetailScreen(
                     memoryId = memoryId,
                     viewModel = viewModel,
@@ -449,7 +508,93 @@ fun MainAppCoordinator(
                 )
             }
         }
-    }
+
+                // MINI TOP UPDATE NOTIFICATION OVERLAY
+                val isPrimaryScreen = currentRoute in listOf("home", "search", "reminders", "settings")
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = isUpdateAvailable && !isNotificationBannerDismissed && isPrimaryScreen,
+                    enter = androidx.compose.animation.slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+                    exit = androidx.compose.animation.slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(horizontal = metrics.horizontalPadding, vertical = 6.dp)
+                ) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        shape = RoundedCornerShape(14.dp),
+                        shadowElevation = 6.dp
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.SystemUpdate,
+                                        contentDescription = "Update",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                Column {
+                                    Text(
+                                        text = "New version released",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                    Text(
+                                        text = "A newer version of the app is available.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                                    )
+                                }
+                            }
+
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Button(
+                                    onClick = { navController.navigate("app_version") },
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text("Update", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
+                                }
+
+                                IconButton(
+                                    onClick = { isNotificationBannerDismissed = true },
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Dismiss",
+                                        tint = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
     // REDESIGNED BILINGUAL QUICK ADD MODAL
     if (showQuickAddDialog) {

@@ -14,7 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.*
-import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
+import com.example.ui.utils.AppWindowWidthClass
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,10 +38,12 @@ import com.example.ui.viewmodel.MemoryViewModel
 import java.text.SimpleDateFormat
 import java.util.*
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     viewModel: MemoryViewModel,
     onNavigateToRemember: (memoryId: Int?, category: String?) -> Unit,
+    onNavigateToDetail: (memoryId: Int) -> Unit,
     onNavigateToSearch: () -> Unit,
     onNavigateToReminders: () -> Unit
 ) {
@@ -50,7 +52,7 @@ fun HomeScreen(
     val reminders by viewModel.activeReminders.collectAsState()
     val selectedCategory by viewModel.selectedCategory.collectAsState()
     val metrics = LocalResponsiveMetrics.current
-    val isCompact = metrics.widthSizeClass == WindowWidthSizeClass.Compact
+    val isCompact = metrics.widthSizeClass == AppWindowWidthClass.Compact
 
     val context = androidx.compose.ui.platform.LocalContext.current
     val currentVersion = remember(context) {

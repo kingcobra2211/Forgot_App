@@ -1,12 +1,14 @@
 package com.example.ui.reminders
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -126,7 +128,7 @@ fun RemindersScreen(
                                 isCalendarView = false
                             },
                             label = { Text("List") },
-                            leadingIcon = { Icon(Icons.Default.List, contentDescription = "List View", modifier = Modifier.size(16.dp)) }
+                            leadingIcon = { Icon(Icons.AutoMirrored.Filled.List, contentDescription = "List View", modifier = Modifier.size(16.dp)) }
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         FilterChip(
@@ -203,6 +205,32 @@ fun RemindersScreen(
             // CALENDAR VIEW MODE
             val monthFormat = remember { SimpleDateFormat("MMMM yyyy", Locale.getDefault()) }
             val currentMonthStr = remember(selectedCalDay) { monthFormat.format(selectedCalDay.time) }
+            val todayCal = remember { Calendar.getInstance() }
+
+            val (daysInMonth, firstDayOfWeek) = remember(selectedCalDay) {
+                val cal = selectedCalDay.clone() as Calendar
+                cal.set(Calendar.DAY_OF_MONTH, 1)
+                val maxDays = cal.getActualMaximum(Calendar.DAY_OF_MONTH)
+                val startDay = cal.get(Calendar.DAY_OF_WEEK)
+                Pair(maxDays, startDay)
+            }
+
+            val reminderDaysInMonth = remember(activeReminders, selectedCalDay) {
+                val monthCal = selectedCalDay.clone() as Calendar
+                val targetMonth = monthCal.get(Calendar.MONTH)
+                val targetYear = monthCal.get(Calendar.YEAR)
+                val set = mutableSetOf<Int>()
+                val remCal = Calendar.getInstance()
+                activeReminders.forEach { item ->
+                    item.memory.reminderDate?.let { dateMs ->
+                        remCal.timeInMillis = dateMs
+                        if (remCal.get(Calendar.MONTH) == targetMonth && remCal.get(Calendar.YEAR) == targetYear) {
+                            set.add(remCal.get(Calendar.DAY_OF_MONTH))
+                        }
+                    }
+                }
+                set
+            }
 
             LazyColumn(
                 modifier = Modifier
@@ -249,7 +277,85 @@ fun RemindersScreen(
                             // Day of week headers
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
                                 listOf("S", "M", "T", "W", "T", "F", "S").forEach { day ->
-                                    Text(day, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(
+                                        text = day,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.width(38.dp),
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // Calendar Dates Grid (7 columns)
+                            val totalSlots = (firstDayOfWeek - 1) + daysInMonth
+                            val totalRows = (totalSlots + 6) / 7
+
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                for (row in 0 until totalRows) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceAround
+                                    ) {
+                                        for (col in 0 until 7) {
+                                            val dayNum = row * 7 + col - (firstDayOfWeek - 2)
+                                            if (dayNum in 1..daysInMonth) {
+                                                val isSelectedDay = selectedCalDay.get(Calendar.DAY_OF_MONTH) == dayNum
+                                                val hasReminder = reminderDaysInMonth.contains(dayNum)
+                                                val isToday = (todayCal.get(Calendar.DAY_OF_MONTH) == dayNum &&
+                                                               todayCal.get(Calendar.MONTH) == selectedCalDay.get(Calendar.MONTH) &&
+                                                               todayCal.get(Calendar.YEAR) == selectedCalDay.get(Calendar.YEAR))
+
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(38.dp)
+                                                        .clip(CircleShape)
+                                                        .background(
+                                                            when {
+                                                                isSelectedDay -> MaterialTheme.colorScheme.primary
+                                                                isToday -> MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                                                else -> Color.Transparent
+                                                            }
+                                                        )
+                                                        .clickable {
+                                                            val newCal = selectedCalDay.clone() as Calendar
+                                                            newCal.set(Calendar.DAY_OF_MONTH, dayNum)
+                                                            selectedCalDay = newCal
+                                                        },
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Column(
+                                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                                        verticalArrangement = Arrangement.Center
+                                                    ) {
+                                                        Text(
+                                                            text = "$dayNum",
+                                                            style = MaterialTheme.typography.bodyMedium,
+                                                            fontWeight = if (isSelectedDay || isToday) FontWeight.Bold else FontWeight.Normal,
+                                                            color = when {
+                                                                isSelectedDay -> Color.White
+                                                                isToday -> MaterialTheme.colorScheme.primary
+                                                                else -> MaterialTheme.colorScheme.onSurface
+                                                            }
+                                                        )
+                                                        if (hasReminder) {
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .size(4.dp)
+                                                                    .clip(CircleShape)
+                                                                    .background(if (isSelectedDay) Color.White else MaterialTheme.colorScheme.primary)
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            } else {
+                                                Spacer(modifier = Modifier.size(38.dp))
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }

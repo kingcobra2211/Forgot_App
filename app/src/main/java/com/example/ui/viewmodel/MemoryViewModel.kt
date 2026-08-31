@@ -240,15 +240,24 @@ data class BackupPayload(
             allList.addAll(archivedMemories.value)
             allList.addAll(trashMemories.value)
 
+            val maxFileSizeBytes = 8 * 1024 * 1024L // 8 MB safety limit per file for JSON base64
             val payloadList = allList.map { item ->
                 var photoB64: String? = null
                 var voiceB64: String? = null
-                val photoFile = item.memory.photoPath?.let { File(it) }
-                if (photoFile != null && photoFile.exists()) {
+                val photoPathToExport = item.memory.photoPath
+                    ?: item.parkingDetail?.photoPath
+                    ?: item.moneyDetail?.receiptPhotoPath
+                    ?: item.documentDetail?.photoPath
+                    ?: item.medicineDetail?.prescriptionPhotoPath
+                    ?: item.placeDetail?.photoPath
+                    ?: item.wishlistDetail?.photoPath
+
+                val photoFile = photoPathToExport?.let { File(it) }
+                if (photoFile != null && photoFile.exists() && photoFile.length() <= maxFileSizeBytes) {
                     photoB64 = android.util.Base64.encodeToString(photoFile.readBytes(), android.util.Base64.NO_WRAP)
                 }
                 val voiceFile = item.memory.voicePath?.let { File(it) }
-                if (voiceFile != null && voiceFile.exists()) {
+                if (voiceFile != null && voiceFile.exists() && voiceFile.length() <= maxFileSizeBytes) {
                     voiceB64 = android.util.Base64.encodeToString(voiceFile.readBytes(), android.util.Base64.NO_WRAP)
                 }
                 BackupPayload(item, photoB64, voiceB64)
@@ -302,7 +311,22 @@ data class BackupPayload(
                         photoPath = newPhotoPath,
                         voicePath = newVoicePath
                     )
-                    payload.memoryWithDetails.copy(memory = updatedMemory)
+                    val updatedParking = payload.memoryWithDetails.parkingDetail?.copy(photoPath = newPhotoPath ?: payload.memoryWithDetails.parkingDetail?.photoPath)
+                    val updatedMoney = payload.memoryWithDetails.moneyDetail?.copy(receiptPhotoPath = newPhotoPath ?: payload.memoryWithDetails.moneyDetail?.receiptPhotoPath)
+                    val updatedDoc = payload.memoryWithDetails.documentDetail?.copy(photoPath = newPhotoPath ?: payload.memoryWithDetails.documentDetail?.photoPath)
+                    val updatedMed = payload.memoryWithDetails.medicineDetail?.copy(prescriptionPhotoPath = newPhotoPath ?: payload.memoryWithDetails.medicineDetail?.prescriptionPhotoPath)
+                    val updatedPlace = payload.memoryWithDetails.placeDetail?.copy(photoPath = newPhotoPath ?: payload.memoryWithDetails.placeDetail?.photoPath)
+                    val updatedWish = payload.memoryWithDetails.wishlistDetail?.copy(photoPath = newPhotoPath ?: payload.memoryWithDetails.wishlistDetail?.photoPath)
+
+                    payload.memoryWithDetails.copy(
+                        memory = updatedMemory,
+                        parkingDetail = updatedParking,
+                        moneyDetail = updatedMoney,
+                        documentDetail = updatedDoc,
+                        medicineDetail = updatedMed,
+                        placeDetail = updatedPlace,
+                        wishlistDetail = updatedWish
+                    )
                 }
             } else {
                 val listType = Types.newParameterizedType(List::class.java, MemoryWithDetails::class.java)

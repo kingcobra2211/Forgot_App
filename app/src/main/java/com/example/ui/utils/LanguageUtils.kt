@@ -76,7 +76,27 @@ object LanguageUtils {
         "export_success" to "Backup exported successfully to: ",
         "export_failed" to "Failed to export backup",
         "import_success" to "Backup imported successfully!",
-        "import_failed" to "Failed to import backup"
+        "import_failed" to "Failed to import backup",
+
+        // Categories
+        "Note" to "Note",
+        "note" to "Note",
+        "Money" to "Money",
+        "money" to "Money",
+        "Parking" to "Parking",
+        "parking" to "Parking",
+        "Document" to "Document",
+        "document" to "Document",
+        "Shopping" to "Shopping",
+        "shopping" to "Shopping",
+        "Medicine" to "Medicine",
+        "medicine" to "Medicine",
+        "Place" to "Place",
+        "place" to "Place",
+        "Gift Idea" to "Gift Idea",
+        "gift idea" to "Gift Idea",
+        "Wishlist" to "Wishlist",
+        "wishlist" to "Wishlist"
     )
 
     private val teluguMap = mapOf(
@@ -153,7 +173,27 @@ object LanguageUtils {
         "export_success" to "బ్యాకప్ విజయవంతంగా ఎగుమతి చేయబడింది: ",
         "export_failed" to "బ్యాకప్ ఎగుమతి విఫలమైంది",
         "import_success" to "బ్యాకప్ విజయవంతంగా దిగుమతి చేయబడింది!",
-        "import_failed" to "బ్యాకప్ దిగుమతి విఫలమైంది"
+        "import_failed" to "బ్యాకప్ దిగుమతి విఫలమైంది",
+
+        // Categories
+        "Note" to "నోట్",
+        "note" to "నోట్",
+        "Money" to "డబ్బు",
+        "money" to "డబ్బు",
+        "Parking" to "పార్కింగ్",
+        "parking" to "పార్కింగ్",
+        "Document" to "పత్రం",
+        "document" to "పత్రం",
+        "Shopping" to "షాపింగ్",
+        "shopping" to "షాపింగ్",
+        "Medicine" to "మందులు",
+        "medicine" to "మందులు",
+        "Place" to "స్థలం",
+        "place" to "స్థలం",
+        "Gift Idea" to "కానుక",
+        "gift idea" to "కానుక",
+        "Wishlist" to "కోరికల జాబితా",
+        "wishlist" to "కోరికల జాబితా"
     )
 
     fun getString(key: String, language: String): String {

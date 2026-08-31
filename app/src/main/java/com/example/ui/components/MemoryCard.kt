@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -387,7 +388,7 @@ fun MemoryCard(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
-                                imageVector = if (isExpired) Icons.Default.Warning else Icons.Default.EventNote,
+                                imageVector = if (isExpired) Icons.Default.Warning else Icons.AutoMirrored.Filled.EventNote,
                                 contentDescription = "Expiry date",
                                 tint = if (isExpired) Color(0xFFEF5350) else accentColor,
                                 modifier = Modifier.size(18.dp)

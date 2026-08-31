@@ -222,13 +222,20 @@ fun SearchScreen(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.Center
                         ) {
-                            Image(
-                                painter = painterResource(id = R.drawable.img_onboarding_hero),
-                                contentDescription = "No memories found artwork",
+                            Box(
                                 modifier = Modifier
-                                    .size(100.dp)
-                                    .clip(RoundedCornerShape(16.dp))
-                            )
+                                    .size(76.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.SearchOff,
+                                    contentDescription = "No memories found artwork",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(36.dp)
+                                )
+                            }
                             Spacer(modifier = Modifier.height(16.dp))
                             Text(
                                 text = "No memories found",

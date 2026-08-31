@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -194,7 +195,7 @@ fun MemoryDetailScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
@@ -441,11 +442,32 @@ private fun RenderCategoryDetails(memoryWithDetails: MemoryWithDetails, activeCo
 
 private fun saveImageToGallery(context: Context, path: String) {
     try {
+        val options = BitmapFactory.Options().apply {
+            inJustDecodeBounds = true
+        }
+        if (path.startsWith("content://")) {
+            val uri = Uri.parse(path)
+            context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
+        } else {
+            BitmapFactory.decodeFile(path, options)
+        }
+
+        // Calculate sample size for max 2048px dimension
+        var sampleSize = 1
+        val maxDim = maxOf(options.outWidth, options.outHeight)
+        while (maxDim / sampleSize > 2048) {
+            sampleSize *= 2
+        }
+
+        val decodeOptions = BitmapFactory.Options().apply {
+            inSampleSize = sampleSize
+        }
+
         val bitmap = if (path.startsWith("content://")) {
             val uri = Uri.parse(path)
-            context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+            context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, decodeOptions) }
         } else {
-            BitmapFactory.decodeFile(path)
+            BitmapFactory.decodeFile(path, decodeOptions)
         }
 
         if (bitmap == null) {
@@ -463,7 +485,7 @@ private fun saveImageToGallery(context: Context, path: String) {
             val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
             if (uri != null) {
                 context.contentResolver.openOutputStream(uri)?.use { outputStream ->
-                    bitmap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream)
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 90, outputStream)
                 }
                 Toast.makeText(context, "Image saved to Gallery!", Toast.LENGTH_SHORT).show()
             }
@@ -472,7 +494,7 @@ private fun saveImageToGallery(context: Context, path: String) {
             val appDir = File(picturesDir, "ForgotApp").apply { if (!exists()) mkdirs() }
             val file = File(appDir, filename)
             file.outputStream().use { outputStream ->
-                bitmap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream)
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 90, outputStream)
             }
             Toast.makeText(context, "Image saved to Gallery!", Toast.LENGTH_SHORT).show()
         }
